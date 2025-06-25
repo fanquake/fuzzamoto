@@ -678,6 +678,20 @@ solution is to make the harness/test produce valid inputs (if possible).</p>
 more aggressive</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="coverage-reports"><a class="header" href="#coverage-reports">Coverage Reports</a></h1>
+<p>It is possible to generate coverage reports for fuzzamoto scenarios by using the
+<code>fuzzamoto-cli coverage</code> command. The build steps for doing this are slightly
+different than if you were to run <code>fuzzamoto-cli init</code>:</p>
+<ul>
+<li>the bitcoind node must be compiled with llvm's <a href="https://clang.llvm.org/docs/SourceBasedCodeCoverage.html">source-based code coverage</a>.</li>
+<li>fuzzamoto's nyx feature should be disabled as coverage tooling does not use snapshots.</li>
+<li>a corpus for the specific scenario is required</li>
+</ul>
+<p>The <code>Dockerfile.coverage</code> file can be used to run a corpus against a specific scenario.
+Both a host directory and a corpus directory must be mounted.</p>
+<p>Example:</p>
+<pre><code>docker build -t fuzzamoto-coverage -f Dockerfile.coverage .
+docker run --privileged -it -v HOST_OUTPUT_DIR:/mnt/output -v HOST_CORPUS_DIR:/mnt/corpus fuzzamoto-coverage /fuzzamoto/target/release/scenario-compact-blocks
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="system-requirements"><a class="header" href="#system-requirements">System Requirements</a></h1>
 <p>For testcase reproduction (see <a href="usage/./reproducing.html">Reproducing Testcases</a>), no
 hardware restrictions with regard to architecture should exist. A linux operating
