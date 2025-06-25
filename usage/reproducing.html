@@ -147,12 +147,12 @@
 <p>Crashing or other interesting inputs can be reproduced without the snapshotting
 VM, by building the scenario binary without the nyx feature and supplying it
 the input either through <code>stdin</code> or the <code>FUZZAMOTO_INPUT</code> environment variable.</p>
-<p>Ensure scenarios are build without the nyx feature:</p>
-<pre><code>cargo build --release --features inherit_stdout,reduced_pow --workspace
+<p>Build all scenarios for reproduction purposes:</p>
+<pre><code>cargo build --release --package fuzzamoto-scenarios --features reproduce
 </code></pre>
-<p><code>--features inherit_stdout</code> is used to inherit stdout from the target
-application, such that any logs, stack traces, etc. are printed to the
-terminal.</p>
+<p><code>--features reproduce</code> is used to enable features useful for reproduction, e.g.
+inherit stdout from the target application, such that any logs, stack traces,
+etc. are printed to the terminal.</p>
 <h2 id="http-server-example"><a class="header" href="#http-server-example"><code>http-server</code> example</a></h2>
 <p>Run the scneario with the input supplied through <code>stdin</code> and pass the right
 <code>bitcoind</code> binary:</p>
@@ -165,7 +165,7 @@ terminal.</p>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
 <ul>
 <li>
-<p>Make sure to not use the nyx feature or else you'll see:</p>
+<p>Make sure to not use the <code>nyx</code> feature or else you'll see:</p>
 <pre><code>...
 Segmentation fault (core dumped)
 </code></pre>
@@ -185,8 +185,9 @@ failed to create client: Io(Os { code: 2, kind: NotFound, message: &quot;No such
 <li>
 <p>If an input does not reproduce, check that you are compiling with all
 necessary features relevant for your case, such as <code>compile_in_vm</code>,
-<code>force_send_and_ping</code> and <code>reduced_pow</code> (always recommended). Also check that
-<code>bitcoind</code> was build with all required patches applied (see
+<code>force_send_and_ping</code> and <code>reduced_pow</code> (these should all be enabled if
+compiling with the <code>reproduce</code> feature). Also check that <code>bitcoind</code> was build
+with all required patches applied (see
 <a href="https://github.com/dergoegge/fuzzamoto/tree/master/target-patches">target-patches/</a>
 and <a href="./target-patches.html">Patches</a>).</p>
 </li>
