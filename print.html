@@ -597,7 +597,7 @@ fuzzing campaigns with libafl.</p>
 </code></pre>
 <p>And then create a new container from it (mounting the current directory to
 <code>/fuzzamoto</code>):</p>
-<pre><code>docker run --privileged -it fuzzamoto-libafl -v $PWD:/fuzzamoto bash
+<pre><code>docker run --privileged -it -v $PWD:/fuzzamoto fuzzamoto-libafl bash
 </code></pre>
 <p><code>--privileged</code> is required to enable the use of kvm by Nyx.</p>
 <p><strong>More instructions will follow soon, see the inline documentation in
