@@ -1,11 +1,11 @@
-FROM debian:bookworm
+FROM debian:trixie
 
 # ------ Coverage for fuzzamoto ------
 
 ARG LLVM_V=21
 
 # Add the LLVM apt repo
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg lsb-release software-properties-common wget && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg lsb-release wget && \
   wget https://apt.llvm.org/llvm.sh && \
   chmod +x llvm.sh && \
   ./llvm.sh ${LLVM_V}

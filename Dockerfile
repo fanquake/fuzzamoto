@@ -1,11 +1,11 @@
-FROM debian:bookworm
+FROM debian:trixie
 
 # ------ Build and install dependencies ------
 
 ARG LLVM_V=21
 
 # Add the LLVM apt repo
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg lsb-release software-properties-common wget && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg lsb-release wget && \
   wget https://apt.llvm.org/llvm.sh && \
   chmod +x llvm.sh && \
   ./llvm.sh ${LLVM_V}
@@ -33,7 +33,6 @@ RUN apt-get update && apt install -y --no-install-recommends \
   pkg-config \
   bsdmainutils \
   openssh-client \
-  libcapstone-dev \
   python3 \
   libzstd-dev \
   libssl-dev \
@@ -54,7 +53,7 @@ RUN mkdir -p /root/.config/tmux/ && \
 
 # Clone AFLplusplus, build with Nyx support, and install
 ENV LLVM_CONFIG=llvm-config-${LLVM_V}
-RUN git clone https://github.com/AFLplusplus/AFLplusplus
+RUN git clone https://github.com/fanquake/AFLplusplus -b trixie_capstone
 RUN cd AFLplusplus/nyx_mode/ && ./build_nyx_support.sh
 RUN cd AFLplusplus && make PERFORMANCE=1 install -j$(nproc --ignore 1)
 
