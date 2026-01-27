@@ -1,7 +1,12 @@
 #[cfg(any(feature = "oracle_netsplit", feature = "oracle_consensus"))]
 use std::time::{Duration, Instant};
 
-use bitcoin::{bip152::BlockTransactionsRequest, consensus::Decodable, hashes::Hash};
+use bitcoin::{
+    bip152::BlockTransactionsRequest,
+    consensus::{Decodable, encode},
+    hashes::Hash,
+    p2p::{message::NetworkMessage, message_compact_blocks::SendCmpct},
+};
 use fuzzamoto::{
     connections::Transport,
     fuzzamoto_main,
@@ -294,6 +299,7 @@ where
                     addrv2,
                     erlay,
                     time,
+                    send_compact,
                 } => {
                     let conn_type = match connection_type.as_str() {
                         "inbound" => fuzzamoto::connections::ConnectionType::Inbound,
@@ -301,6 +307,7 @@ where
                         _ => continue,
                     };
 
+                    #[allow(clippy::cast_possible_wrap)]
                     let handshake_opts = fuzzamoto::connections::HandshakeOpts {
                         time: time as i64,
                         relay,
@@ -310,10 +317,19 @@ where
                         erlay,
                     };
 
-                    if let Ok(mut connection) = self.inner.target.connect(conn_type) {
-                        if connection.version_handshake(handshake_opts).is_ok() {
-                            self.inner.connections.push(connection);
+                    if let Ok(mut connection) = self.inner.target.connect(conn_type)
+                        && connection.version_handshake(handshake_opts).is_ok()
+                    {
+                        if let Some(send_compact) = send_compact {
+                            let sendcmpct = NetworkMessage::SendCmpct(SendCmpct {
+                                version: 2,
+                                send_compact,
+                            });
+                            let _ = connection
+                                .send(&("sendcmpct".to_string(), encode::serialize(&sendcmpct)));
                         }
+
+                        self.inner.connections.push(connection);
                     }
                     non_probe_action_count += 1;
                 }

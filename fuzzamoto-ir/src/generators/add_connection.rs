@@ -146,7 +146,13 @@ impl<R: RngCore> Generator<R> for AddConnectionGenerator {
                             handshake_opts_var.index,
                             time_var.index,
                         ],
-                        operation: Operation::AddConnectionWithHandshake,
+                        operation: Operation::AddConnectionWithHandshake {
+                            send_compact: if rng.gen_bool(0.8) {
+                                Some(rng.gen_bool(0.5))
+                            } else {
+                                None
+                            },
+                        },
                     })
                     .expect("Inserting AddConnectionWithHandshake should always succeed");
             } else {

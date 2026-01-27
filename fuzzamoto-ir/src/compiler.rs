@@ -59,6 +59,7 @@ pub enum CompiledAction {
         addrv2: bool,
         erlay: bool,
         time: u64,
+        send_compact: Option<bool>,
     },
     /// Send a message on one of the connections
     SendRawMessage(usize, String, Vec<u8>),
@@ -454,7 +455,7 @@ impl Compiler {
                     self.handle_bip152_blocktxn_operations(instruction)?;
                 }
 
-                Operation::AddConnection | Operation::AddConnectionWithHandshake => {
+                Operation::AddConnection | Operation::AddConnectionWithHandshake { .. } => {
                     self.handle_new_connection_operations(instruction)?;
                 }
 
@@ -1802,7 +1803,7 @@ impl Compiler {
                 self.connection_counter += 1;
                 self.append_variable(connection_id);
             }
-            Operation::AddConnectionWithHandshake => {
+            Operation::AddConnectionWithHandshake { send_compact } => {
                 let node_var = self.get_input::<usize>(&instruction.inputs, 0)?;
                 let connection_type_var = self.get_input::<String>(&instruction.inputs, 1)?;
                 let handshake_opts = self.get_input::<HandshakeOpts>(&instruction.inputs, 2)?;
@@ -1819,6 +1820,7 @@ impl Compiler {
                         addrv2: handshake_opts.addrv2,
                         erlay: handshake_opts.erlay,
                         time: *time_var,
+                        send_compact: *send_compact,
                     });
 
                 let connection_id = self.connection_counter;

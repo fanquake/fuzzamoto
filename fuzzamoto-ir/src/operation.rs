@@ -98,7 +98,9 @@ pub enum Operation {
     /// Create a new connection to a node
     AddConnection,
     /// Create a new connection to a node and perform a version handshake
-    AddConnectionWithHandshake,
+    AddConnectionWithHandshake {
+        send_compact: Option<bool>,
+    },
 
     /// Script building operations
     BuildRawScripts,
@@ -255,7 +257,12 @@ impl fmt::Display for Operation {
             Operation::LoadTime(time) => write!(f, "LoadTime({time})"),
             Operation::SetTime => write!(f, "SetTime"),
             Operation::AddConnection => write!(f, "AddConnection"),
-            Operation::AddConnectionWithHandshake => write!(f, "AddConnectionWithHandshake"),
+            Operation::AddConnectionWithHandshake { send_compact } => {
+                write!(
+                    f,
+                    "AddConnectionWithHandshake(send_compact={send_compact:?})"
+                )
+            }
             Operation::LoadHandshakeOpts { .. } => write!(f, "LoadHandshakeOpts"),
             Operation::BuildRawScripts => write!(f, "BuildRawScripts"),
             Operation::BuildPayToWitnessScriptHash => write!(f, "BuildPayToWitnessScriptHash"),
@@ -496,7 +503,7 @@ impl Operation {
             | Operation::LoadSize(_)
             | Operation::SetTime
             | Operation::AddConnection
-            | Operation::AddConnectionWithHandshake
+            | Operation::AddConnectionWithHandshake { .. }
             | Operation::LoadHandshakeOpts { .. }
             | Operation::BuildPayToWitnessScriptHash
             | Operation::BuildRawScripts
@@ -655,7 +662,7 @@ impl Operation {
             | Operation::LoadSize(_)
             | Operation::SetTime
             | Operation::AddConnection
-            | Operation::AddConnectionWithHandshake
+            | Operation::AddConnectionWithHandshake { .. }
             | Operation::LoadHandshakeOpts { .. }
             | Operation::BuildPayToWitnessScriptHash
             | Operation::BuildRawScripts
@@ -799,7 +806,7 @@ impl Operation {
             Operation::LoadTime(_) => vec![Variable::Time],
             Operation::SetTime => vec![],
             Operation::AddConnection => vec![Variable::Connection],
-            Operation::AddConnectionWithHandshake => vec![Variable::Connection],
+            Operation::AddConnectionWithHandshake { .. } => vec![Variable::Connection],
             Operation::LoadHandshakeOpts { .. } => vec![Variable::HandshakeParams],
             Operation::Nop { outputs, .. } => vec![Variable::Nop; *outputs],
             Operation::BuildPayToWitnessScriptHash => vec![Variable::Scripts],
@@ -922,7 +929,7 @@ impl Operation {
             Operation::AdvanceTime => vec![Variable::Time, Variable::Duration],
             Operation::SetTime => vec![Variable::Time],
             Operation::AddConnection => vec![Variable::Node, Variable::ConnectionType],
-            Operation::AddConnectionWithHandshake => vec![
+            Operation::AddConnectionWithHandshake { .. } => vec![
                 Variable::Node,
                 Variable::ConnectionType,
                 Variable::HandshakeParams,
@@ -1127,7 +1134,7 @@ impl Operation {
             | Operation::LoadTime(_)
             | Operation::SetTime
             | Operation::AddConnection
-            | Operation::AddConnectionWithHandshake
+            | Operation::AddConnectionWithHandshake { .. }
             | Operation::LoadHandshakeOpts { .. }
             | Operation::BuildPayToWitnessScriptHash
             | Operation::BuildRawScripts
