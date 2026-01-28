@@ -374,12 +374,6 @@ where
 
         #[cfg(feature = "oracle_consensus")]
         {
-            // Ensure the nodes are connected and eventually consistent (i.e. reach consensus
-            // on the chain tip).
-            if !self.second.is_connected_to(&self.inner.target) {
-                let _ = self.second.connect_to(&self.inner.target);
-            }
-
             let consensus_oracle = ConsensusOracle::<TX, TX>::default();
             if let OracleResult::Fail(e) = consensus_oracle.evaluate(&mut ConsensusContext {
                 primary: &mut self.inner.target,

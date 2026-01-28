@@ -71,8 +71,8 @@ impl<'a, T1, T2, TX1, TX2> Oracle<ConsensusContext<'a, T1, T2>> for ConsensusOra
 where
     TX1: Transport,
     TX2: Transport,
-    T1: Target<TX1> + HasTipInfo + GenerateToAddress,
-    T2: Target<TX2> + HasTipInfo,
+    T1: Target<TX1> + HasTipInfo + GenerateToAddress + ConnectableTarget,
+    T2: Target<TX2> + HasTipInfo + ConnectableTarget,
 {
     fn evaluate(&self, context: &mut ConsensusContext<'a, T1, T2>) -> OracleResult {
         // reset mocktime to the most future value
@@ -82,6 +82,12 @@ where
         let _ = context
             .primary
             .generate_to_address(ADDRESS_BCRT1_P2WSH_OP_TRUE);
+
+        // Ensure the nodes are connected and eventually consistent (i.e. reach consensus
+        // on the chain tip).
+        if !context.reference.is_connected_to(context.primary) {
+            let _ = context.reference.connect_to(context.primary);
+        }
 
         let start = Instant::now();
 
