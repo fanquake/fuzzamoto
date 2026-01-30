@@ -17,7 +17,7 @@ impl<R: RngCore> Generator<R> for CompactBlockGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         // choose a block upon which we build the compact block
-        let Some(block) = builder.get_random_variable(rng, Variable::Block) else {
+        let Some(block) = builder.get_random_variable(rng, &Variable::Block) else {
             return Err(GeneratorError::MissingVariables);
         };
 

@@ -10,7 +10,7 @@ pub mod mutators;
 pub mod operation;
 pub mod variable;
 
-use crate::errors::*;
+use crate::errors::ProgramValidationError;
 pub use bloom::*;
 pub use builder::*;
 pub use generators::*;
@@ -77,6 +77,7 @@ pub enum AddrNetwork {
 }
 
 impl AddrNetwork {
+    #[must_use]
     pub fn id(&self) -> u8 {
         match self {
             AddrNetwork::IPv4 => 0x01,
@@ -90,20 +91,18 @@ impl AddrNetwork {
         }
     }
 
+    #[must_use]
     pub fn expected_payload_len(&self) -> Option<usize> {
         match self {
             AddrNetwork::IPv4 => Some(4),
-            AddrNetwork::IPv6 => Some(16),
+            AddrNetwork::IPv6 | AddrNetwork::Cjdns | AddrNetwork::Yggdrasil => Some(16),
             AddrNetwork::TorV2 => Some(10),
-            AddrNetwork::TorV3 => Some(32),
-            AddrNetwork::I2p => Some(32),
-            AddrNetwork::Cjdns => Some(16),
-            AddrNetwork::Yggdrasil => Some(16),
+            AddrNetwork::TorV3 | AddrNetwork::I2p => Some(32),
             AddrNetwork::Unknown(_) => None,
         }
     }
 
-    #[allow(dead_code)]
+    #[must_use]
     pub fn from_id(id: u8) -> Self {
         match id {
             0x01 => AddrNetwork::IPv4,
@@ -128,7 +127,7 @@ impl fmt::Display for AddrNetwork {
             AddrNetwork::I2p => write!(f, "i2p"),
             AddrNetwork::Cjdns => write!(f, "cjdns"),
             AddrNetwork::Yggdrasil => write!(f, "yggdrasil"),
-            AddrNetwork::Unknown(id) => write!(f, "unknown({:#04x})", id),
+            AddrNetwork::Unknown(id) => write!(f, "unknown({id:#04x})"),
         }
     }
 }
@@ -151,6 +150,7 @@ pub enum AddrRecord {
 }
 
 impl Program {
+    #[must_use]
     pub fn unchecked_new(context: ProgramContext, instructions: Vec<Instruction>) -> Self {
         Self {
             instructions,
@@ -158,6 +158,7 @@ impl Program {
         }
     }
 
+    #[must_use]
     pub fn is_statically_valid(&self) -> bool {
         match ProgramBuilder::from_program(self.clone()) {
             Ok(builder) => builder.finalize().is_ok(),
@@ -165,11 +166,9 @@ impl Program {
         }
     }
 
+    #[must_use]
     pub fn to_builder(&self) -> Option<ProgramBuilder> {
-        match ProgramBuilder::from_program(self.clone()) {
-            Ok(builder) => Some(builder),
-            Err(_) => None,
-        }
+        ProgramBuilder::from_program(self.clone()).ok()
     }
 
     pub fn remove_nops(&mut self) {
@@ -211,7 +210,7 @@ impl Program {
     pub fn get_random_instruction_index<R: RngCore>(
         &self,
         rng: &mut R,
-        context: InstructionContext,
+        context: &InstructionContext,
     ) -> Option<usize> {
         self.get_random_instruction_index_from(rng, context, 0)
     }
@@ -219,7 +218,7 @@ impl Program {
     pub fn get_random_instruction_index_from<R: RngCore>(
         &self,
         rng: &mut R,
-        context: InstructionContext,
+        context: &InstructionContext,
         from: usize,
     ) -> Option<usize> {
         let mut scope_counter = 0;
@@ -228,12 +227,11 @@ impl Program {
             id: scope_counter,
             context: InstructionContext::Global,
         }];
-        let mut contexts = Vec::new();
-        contexts.reserve(self.instructions.len());
+        let mut contexts = Vec::with_capacity(self.instructions.len());
         contexts.push(0);
 
         for (i, instr) in self.instructions.iter().enumerate() {
-            if scopes.last().unwrap().context == context {
+            if scopes.last().unwrap().context == *context {
                 contexts.push(i);
             }
 
@@ -257,9 +255,9 @@ impl Program {
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        writeln!(
             f,
-            "// Context: nodes={} connections={} timestamp={}\n",
+            "// Context: nodes={} connections={} timestamp={}",
             self.context.num_nodes, self.context.num_connections, self.context.timestamp
         )?;
         let mut var_counter = 0;
@@ -267,20 +265,16 @@ impl fmt::Display for Program {
 
         for instruction in &self.instructions {
             if indent_counter > 0 {
-                let offset = if instruction.operation.is_block_end() {
-                    1
-                } else {
-                    0
-                };
+                let offset = usize::from(instruction.operation.is_block_end());
                 write!(f, "{}", "  ".repeat(indent_counter - offset))?;
             }
 
             if instruction.operation.num_outputs() > 0 {
                 for _ in 0..(instruction.operation.num_outputs() - 1) {
-                    write!(f, "v{}, ", var_counter)?;
+                    write!(f, "v{var_counter}, ")?;
                     var_counter += 1;
                 }
-                write!(f, "v{}", var_counter)?;
+                write!(f, "v{var_counter}")?;
                 var_counter += 1;
                 write!(f, " <- ")?;
             }
@@ -289,7 +283,7 @@ impl fmt::Display for Program {
             if instruction.operation.num_inputs() > 0 {
                 write!(f, "(")?;
                 for input in &instruction.inputs[..instruction.operation.num_inputs() - 1] {
-                    write!(f, "v{}, ", input)?;
+                    write!(f, "v{input}, ")?;
                 }
                 write!(
                     f,
@@ -302,13 +296,13 @@ impl fmt::Display for Program {
             if instruction.operation.num_inner_outputs() > 0 {
                 write!(f, " -> ")?;
                 for _ in 0..(instruction.operation.num_inner_outputs() - 1) {
-                    write!(f, "v{}, ", var_counter)?;
+                    write!(f, "v{var_counter}, ")?;
                     var_counter += 1;
                 }
-                write!(f, "v{}", var_counter)?;
+                write!(f, "v{var_counter}")?;
                 var_counter += 1;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
 
             if instruction.operation.is_block_begin() {
                 indent_counter += 1;
@@ -371,7 +365,7 @@ impl Eq for RecentBlock {}
 // Ordering based only on height
 impl PartialOrd for RecentBlock {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.height.cmp(&other.height))
+        Some(self.cmp(other))
     }
 }
 

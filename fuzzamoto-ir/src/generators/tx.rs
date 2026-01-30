@@ -43,63 +43,63 @@ fn build_outputs<R: RngCore>(
     mut_outputs_var: &IndexedVariable,
     output_amounts: &[(u64, OutputType)],
     coinbase: bool,
-) -> Result<(), GeneratorError> {
-    for (amount, output_type) in output_amounts.iter() {
+) {
+    for (amount, output_type) in output_amounts {
         let scripts_var = match output_type {
             OutputType::PayToWitnessScriptHash => {
                 let optrue_bytes_var = builder.force_append_expect_output(
                     vec![],
-                    Operation::LoadBytes(vec![OP_TRUE.to_u8()]),
+                    &Operation::LoadBytes(vec![OP_TRUE.to_u8()]),
                 );
                 let mut_witness_stack_var =
-                    builder.force_append_expect_output(vec![], Operation::BeginWitnessStack);
+                    builder.force_append_expect_output(vec![], &Operation::BeginWitnessStack);
 
                 let witness_stack_var = builder.force_append_expect_output(
                     vec![mut_witness_stack_var.index],
-                    Operation::EndWitnessStack,
+                    &Operation::EndWitnessStack,
                 );
 
                 builder.force_append_expect_output(
                     vec![optrue_bytes_var.index, witness_stack_var.index],
-                    Operation::BuildPayToWitnessScriptHash,
+                    &Operation::BuildPayToWitnessScriptHash,
                 )
             }
             OutputType::PayToAnchor => {
-                builder.force_append_expect_output(vec![], Operation::BuildPayToAnchor)
+                builder.force_append_expect_output(vec![], &Operation::BuildPayToAnchor)
             }
             OutputType::OpReturn => {
                 let size_var =
-                    builder.force_append_expect_output(vec![], Operation::LoadSize(2 << 15));
+                    builder.force_append_expect_output(vec![], &Operation::LoadSize(2 << 15));
                 builder.force_append_expect_output(
                     vec![size_var.index],
-                    Operation::BuildOpReturnScripts,
+                    &Operation::BuildOpReturnScripts,
                 )
             }
             OutputType::PayToScriptHash => {
                 let optrue_bytes_var = builder.force_append_expect_output(
                     vec![],
-                    Operation::LoadBytes(vec![OP_TRUE.to_u8()]),
+                    &Operation::LoadBytes(vec![OP_TRUE.to_u8()]),
                 );
                 let mut_witness_stack_var =
-                    builder.force_append_expect_output(vec![], Operation::BeginWitnessStack);
+                    builder.force_append_expect_output(vec![], &Operation::BeginWitnessStack);
 
                 let witness_stack_var = builder.force_append_expect_output(
                     vec![mut_witness_stack_var.index],
-                    Operation::EndWitnessStack,
+                    &Operation::EndWitnessStack,
                 );
 
                 builder.force_append_expect_output(
                     vec![optrue_bytes_var.index, witness_stack_var.index],
-                    Operation::BuildPayToScriptHash,
+                    &Operation::BuildPayToScriptHash,
                 )
             }
             OutputType::PayToPubKey
             | OutputType::PayToPubKeyHash
             | OutputType::PayToWitnessPubKeyHash => {
                 let private_key_var = builder
-                    .force_append_expect_output(vec![], Operation::LoadPrivateKey([0x41u8; 32]));
+                    .force_append_expect_output(vec![], &Operation::LoadPrivateKey([0x41u8; 32]));
                 let sighash_flags_var =
-                    builder.force_append_expect_output(vec![], Operation::LoadSigHashFlags(0));
+                    builder.force_append_expect_output(vec![], &Operation::LoadSigHashFlags(0));
 
                 let op = match output_type {
                     OutputType::PayToPubKey => Operation::BuildPayToPubKey,
@@ -110,13 +110,14 @@ fn build_outputs<R: RngCore>(
 
                 builder.force_append_expect_output(
                     vec![private_key_var.index, sighash_flags_var.index],
-                    op,
+                    &op,
                 )
             }
             OutputType::PayToTaproot => build_taproot_scripts(builder, rng),
         };
 
-        let amount_var = builder.force_append_expect_output(vec![], Operation::LoadAmount(*amount));
+        let amount_var =
+            builder.force_append_expect_output(vec![], &Operation::LoadAmount(*amount));
 
         let add_operation = if coinbase {
             Operation::AddCoinbaseTxOutput
@@ -126,11 +127,9 @@ fn build_outputs<R: RngCore>(
 
         builder.force_append(
             vec![mut_outputs_var.index, scripts_var.index, amount_var.index],
-            add_operation,
+            &add_operation,
         );
     }
-
-    Ok(())
 }
 
 fn build_tx<R: RngCore>(
@@ -139,66 +138,67 @@ fn build_tx<R: RngCore>(
     funding_txos: &[IndexedVariable],
     tx_version: u32,
     output_amounts: &[(u64, OutputType)],
-) -> Result<(IndexedVariable, Vec<IndexedVariable>), GeneratorError> {
+) -> (IndexedVariable, Vec<IndexedVariable>) {
     let tx_version_var =
-        builder.force_append_expect_output(vec![], Operation::LoadTxVersion(tx_version));
+        builder.force_append_expect_output(vec![], &Operation::LoadTxVersion(tx_version));
 
-    let tx_lock_time_var = builder.force_append_expect_output(vec![], Operation::LoadLockTime(0));
+    let tx_lock_time_var = builder.force_append_expect_output(vec![], &Operation::LoadLockTime(0));
     let mut_tx_var = builder.force_append_expect_output(
         vec![tx_version_var.index, tx_lock_time_var.index],
-        Operation::BeginBuildTx,
+        &Operation::BeginBuildTx,
     );
-    let mut_inputs_var = builder.force_append_expect_output(vec![], Operation::BeginBuildTxInputs);
+    let mut_inputs_var = builder.force_append_expect_output(vec![], &Operation::BeginBuildTxInputs);
 
     for funding_txo in funding_txos {
         let sequence_var =
-            builder.force_append_expect_output(vec![], Operation::LoadSequence(0xffffffff));
+            builder.force_append_expect_output(vec![], &Operation::LoadSequence(0xffff_ffff));
         builder.force_append(
             vec![mut_inputs_var.index, funding_txo.index, sequence_var.index],
-            Operation::AddTxInput,
+            &Operation::AddTxInput,
         );
     }
 
-    let inputs_var =
-        builder.force_append_expect_output(vec![mut_inputs_var.index], Operation::EndBuildTxInputs);
+    let inputs_var = builder
+        .force_append_expect_output(vec![mut_inputs_var.index], &Operation::EndBuildTxInputs);
 
     let mut_outputs_var =
-        builder.force_append_expect_output(vec![inputs_var.index], Operation::BeginBuildTxOutputs);
+        builder.force_append_expect_output(vec![inputs_var.index], &Operation::BeginBuildTxOutputs);
 
-    let _ = build_outputs(builder, rng, &mut_outputs_var, output_amounts, false);
+    build_outputs(builder, rng, &mut_outputs_var, output_amounts, false);
 
     let outputs_var = builder
-        .force_append_expect_output(vec![mut_outputs_var.index], Operation::EndBuildTxOutputs);
+        .force_append_expect_output(vec![mut_outputs_var.index], &Operation::EndBuildTxOutputs);
 
     let const_tx_var = builder.force_append_expect_output(
         vec![mut_tx_var.index, inputs_var.index, outputs_var.index],
-        Operation::EndBuildTx,
+        &Operation::EndBuildTx,
     );
 
     // Make every output of the transaction spendable
     let mut outputs = Vec::new();
-    for (_, output_type) in output_amounts.iter() {
+    for (_, output_type) in output_amounts {
         let mut txo_var =
-            builder.force_append_expect_output(vec![const_tx_var.index], Operation::TakeTxo);
+            builder.force_append_expect_output(vec![const_tx_var.index], &Operation::TakeTxo);
         if matches!(output_type, OutputType::PayToTaproot) && rng.gen_bool(0.5) {
             let annex_var = builder.force_append_expect_output(
                 vec![],
-                Operation::LoadTaprootAnnex {
+                &Operation::LoadTaprootAnnex {
                     annex: random_annex(rng),
                 },
             );
             txo_var = builder.force_append_expect_output(
                 vec![txo_var.index, annex_var.index],
-                Operation::TaprootTxoUseAnnex,
+                &Operation::TaprootTxoUseAnnex,
             );
         }
         outputs.push(txo_var);
     }
 
-    Ok((const_tx_var, outputs))
+    (const_tx_var, outputs)
 }
 
 /// `SingleTxGenerator` generates instructions for a single new transaction into a program
+#[derive(Default)]
 pub struct SingleTxGenerator;
 
 impl<R: RngCore> Generator<R> for SingleTxGenerator {
@@ -211,7 +211,7 @@ impl<R: RngCore> Generator<R> for SingleTxGenerator {
         let funding_txos = builder.get_random_utxos(rng);
         if funding_txos.is_empty() {
             return Err(GeneratorError::MissingVariables);
-        };
+        }
 
         let tx_version = *[1, 2, 3].choose(rng).unwrap();
         let output_amounts = {
@@ -225,27 +225,27 @@ impl<R: RngCore> Generator<R> for SingleTxGenerator {
             }
             amounts
         };
-        let (const_tx_var, _) = build_tx(builder, rng, &funding_txos, tx_version, &output_amounts)?;
+        let (const_tx_var, _) = build_tx(builder, rng, &funding_txos, tx_version, &output_amounts);
 
         if rng.gen_bool(0.5) {
             let conn_var = builder.get_or_create_random_connection(rng);
 
             let mut_inventory_var =
-                builder.force_append_expect_output(vec![], Operation::BeginBuildInventory);
+                builder.force_append_expect_output(vec![], &Operation::BeginBuildInventory);
             builder.force_append(
                 vec![mut_inventory_var.index, const_tx_var.index],
-                Operation::AddWtxidInv,
+                &Operation::AddWtxidInv,
             );
             let const_inventory_var = builder.force_append_expect_output(
                 vec![mut_inventory_var.index],
-                Operation::EndBuildInventory,
+                &Operation::EndBuildInventory,
             );
 
             builder.force_append(
                 vec![conn_var.index, const_inventory_var.index],
-                Operation::SendInv,
+                &Operation::SendInv,
             );
-            builder.force_append(vec![conn_var.index, const_tx_var.index], Operation::SendTx);
+            builder.force_append(vec![conn_var.index, const_tx_var.index], &Operation::SendTx);
         }
         Ok(())
     }
@@ -255,14 +255,9 @@ impl<R: RngCore> Generator<R> for SingleTxGenerator {
     }
 }
 
-impl Default for SingleTxGenerator {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 /// `OneParentOneChildGenerator` generates instructions for creating a 1P1C package and sending it
 /// to a node, with the child tx being the first to be sent
+#[derive(Default)]
 pub struct OneParentOneChildGenerator;
 
 impl<R: RngCore> Generator<R> for OneParentOneChildGenerator {
@@ -275,7 +270,7 @@ impl<R: RngCore> Generator<R> for OneParentOneChildGenerator {
         let funding_txos = builder.get_random_utxos(rng);
         if funding_txos.is_empty() {
             return Err(GeneratorError::MissingVariables);
-        };
+        }
 
         let (parent_tx_var, parent_output_vars) = build_tx(
             builder,
@@ -286,35 +281,35 @@ impl<R: RngCore> Generator<R> for OneParentOneChildGenerator {
                 (100_000_000, OutputType::PayToWitnessScriptHash),
                 (10000, OutputType::PayToAnchor),
             ],
-        )?;
+        );
         let (child_tx_var, _) = build_tx(
             builder,
             rng,
             &[parent_output_vars.last().unwrap().clone()],
             2,
             &[(50_000_000, OutputType::PayToWitnessScriptHash)],
-        )?;
+        );
 
         let conn_var = builder.get_or_create_random_connection(rng);
 
         let mut send_tx = |tx_var: IndexedVariable| {
             let mut_inventory_var =
-                builder.force_append_expect_output(vec![], Operation::BeginBuildInventory);
+                builder.force_append_expect_output(vec![], &Operation::BeginBuildInventory);
             builder.force_append(
                 vec![mut_inventory_var.index, tx_var.index],
-                Operation::AddWtxidInv,
+                &Operation::AddWtxidInv,
             );
             let const_inventory_var = builder.force_append_expect_output(
                 vec![mut_inventory_var.index],
-                Operation::EndBuildInventory,
+                &Operation::EndBuildInventory,
             );
 
             builder.force_append(
                 vec![conn_var.index, const_inventory_var.index],
-                Operation::SendInv,
+                &Operation::SendInv,
             );
 
-            builder.force_append(vec![conn_var.index, tx_var.index], Operation::SendTx);
+            builder.force_append(vec![conn_var.index, tx_var.index], &Operation::SendTx);
         };
         // Send the child tx first to trigger 1p1c logic
         send_tx(child_tx_var);
@@ -328,14 +323,9 @@ impl<R: RngCore> Generator<R> for OneParentOneChildGenerator {
     }
 }
 
-impl Default for OneParentOneChildGenerator {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 /// `LongChainGenerator` generates instructions for creating a chain of 25 transactions and sending
 /// them to a node
+#[derive(Default)]
 pub struct LongChainGenerator;
 
 impl<R: RngCore> Generator<R> for LongChainGenerator {
@@ -348,7 +338,7 @@ impl<R: RngCore> Generator<R> for LongChainGenerator {
         let mut funding_txos = builder.get_random_utxos(rng);
         if funding_txos.is_empty() {
             return Err(GeneratorError::MissingVariables);
-        };
+        }
 
         // Create a chain of 25 transactions (default ancestor limit in Bitcoin Core), where each
         // transaction spends the output of the previous transaction
@@ -363,7 +353,7 @@ impl<R: RngCore> Generator<R> for LongChainGenerator {
                     100_000_000 - (i * 100_000),
                     OutputType::PayToWitnessScriptHash,
                 )],
-            )?;
+            );
             tx_vars.push(tx_var);
             funding_txos = outputs;
         }
@@ -373,21 +363,21 @@ impl<R: RngCore> Generator<R> for LongChainGenerator {
         // Send the transactions to the network
         for tx_var in tx_vars {
             let mut_inventory_var =
-                builder.force_append_expect_output(vec![], Operation::BeginBuildInventory);
+                builder.force_append_expect_output(vec![], &Operation::BeginBuildInventory);
             builder.force_append(
                 vec![mut_inventory_var.index, tx_var.index],
-                Operation::AddWtxidInv,
+                &Operation::AddWtxidInv,
             );
             let const_inventory_var = builder.force_append_expect_output(
                 vec![mut_inventory_var.index],
-                Operation::EndBuildInventory,
+                &Operation::EndBuildInventory,
             );
 
             builder.force_append(
                 vec![conn_var.index, const_inventory_var.index],
-                Operation::SendInv,
+                &Operation::SendInv,
             );
-            builder.force_append(vec![conn_var.index, tx_var.index], Operation::SendTx);
+            builder.force_append(vec![conn_var.index, tx_var.index], &Operation::SendTx);
         }
 
         Ok(())
@@ -398,14 +388,9 @@ impl<R: RngCore> Generator<R> for LongChainGenerator {
     }
 }
 
-impl Default for LongChainGenerator {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 /// `LargeTxGenerator` generates instructions for creating a single large transaction and sending
 /// it to a node
+#[derive(Default)]
 pub struct LargeTxGenerator;
 
 impl<R: RngCore> Generator<R> for LargeTxGenerator {
@@ -418,7 +403,7 @@ impl<R: RngCore> Generator<R> for LargeTxGenerator {
         let funding_txos = builder.get_random_utxos(rng);
         if funding_txos.is_empty() {
             return Err(GeneratorError::MissingVariables);
-        };
+        }
 
         let conn_var = builder.get_or_create_random_connection(rng);
 
@@ -426,28 +411,28 @@ impl<R: RngCore> Generator<R> for LargeTxGenerator {
             let (tx_var, _) = build_tx(
                 builder,
                 rng,
-                &[utxo.clone()],
+                std::slice::from_ref(&utxo),
                 2,
                 &[(10_000, OutputType::OpReturn)],
-            )?;
+            );
 
             let mut send_tx = |tx_var: IndexedVariable| {
                 let mut_inventory_var =
-                    builder.force_append_expect_output(vec![], Operation::BeginBuildInventory);
+                    builder.force_append_expect_output(vec![], &Operation::BeginBuildInventory);
                 builder.force_append(
                     vec![mut_inventory_var.index, tx_var.index],
-                    Operation::AddWtxidInv,
+                    &Operation::AddWtxidInv,
                 );
                 let const_inventory_var = builder.force_append_expect_output(
                     vec![mut_inventory_var.index],
-                    Operation::EndBuildInventory,
+                    &Operation::EndBuildInventory,
                 );
 
                 builder.force_append(
                     vec![conn_var.index, const_inventory_var.index],
-                    Operation::SendInv,
+                    &Operation::SendInv,
                 );
-                builder.force_append(vec![conn_var.index, tx_var.index], Operation::SendTx);
+                builder.force_append(vec![conn_var.index, tx_var.index], &Operation::SendTx);
             };
             send_tx(tx_var);
         }
@@ -460,13 +445,8 @@ impl<R: RngCore> Generator<R> for LargeTxGenerator {
     }
 }
 
-impl Default for LargeTxGenerator {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 /// `CoinbaseTxGenerator` generates instructions for a coinbase tx into a program
+#[derive(Default)]
 pub struct CoinbaseTxGenerator;
 
 impl<R: RngCore> Generator<R> for CoinbaseTxGenerator {
@@ -477,25 +457,25 @@ impl<R: RngCore> Generator<R> for CoinbaseTxGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         let tx_version_var =
-            builder.force_append_expect_output(vec![], Operation::LoadTxVersion(1));
+            builder.force_append_expect_output(vec![], &Operation::LoadTxVersion(1));
 
         let tx_lock_time_var =
-            builder.force_append_expect_output(vec![], Operation::LoadLockTime(0));
+            builder.force_append_expect_output(vec![], &Operation::LoadLockTime(0));
 
         let mut_tx_var = builder.force_append_expect_output(
             vec![tx_version_var.index, tx_lock_time_var.index],
-            Operation::BeginBuildCoinbaseTx,
+            &Operation::BeginBuildCoinbaseTx,
         );
 
         let sequence_var =
-            builder.force_append_expect_output(vec![], Operation::LoadSequence(0xffffffff));
+            builder.force_append_expect_output(vec![], &Operation::LoadSequence(0xffff_ffff));
 
         let coinbase_input_var = builder
-            .force_append_expect_output(vec![sequence_var.index], Operation::BuildCoinbaseTxInput);
+            .force_append_expect_output(vec![sequence_var.index], &Operation::BuildCoinbaseTxInput);
 
         let mut_outputs_var = builder.force_append_expect_output(
             vec![coinbase_input_var.index],
-            Operation::BeginBuildCoinbaseTxOutputs,
+            &Operation::BeginBuildCoinbaseTxOutputs,
         );
         let output_amounts = {
             let mut amounts = vec![];
@@ -509,11 +489,11 @@ impl<R: RngCore> Generator<R> for CoinbaseTxGenerator {
             amounts
         };
 
-        let _ = build_outputs(builder, rng, &mut_outputs_var, &output_amounts, true);
+        build_outputs(builder, rng, &mut_outputs_var, &output_amounts, true);
 
         let outputs_var = builder.force_append_expect_output(
             vec![mut_outputs_var.index],
-            Operation::EndBuildCoinbaseTxOutputs,
+            &Operation::EndBuildCoinbaseTxOutputs,
         );
 
         builder.force_append(
@@ -522,7 +502,7 @@ impl<R: RngCore> Generator<R> for CoinbaseTxGenerator {
                 coinbase_input_var.index,
                 outputs_var.index,
             ],
-            Operation::EndBuildCoinbaseTx,
+            &Operation::EndBuildCoinbaseTx,
         );
         Ok(())
     }
@@ -551,13 +531,13 @@ fn build_taproot_scripts<R: RngCore>(builder: &mut ProgramBuilder, rng: &mut R) 
 
     let spend_info_var = builder.force_append_expect_output(
         vec![],
-        Operation::BuildTaprootTree {
+        &Operation::BuildTaprootTree {
             secret_key,
             script_leaf,
         },
     );
 
-    builder.force_append_expect_output(vec![spend_info_var.index], Operation::BuildPayToTaproot)
+    builder.force_append_expect_output(vec![spend_info_var.index], &Operation::BuildPayToTaproot)
 }
 
 /// Generate a merkle path to simulate additional leaves in the taproot tree.
@@ -600,7 +580,7 @@ fn pick_strict_non_default_version<R: RngCore>(rng: &mut R) -> u8 {
     *[0xC2u8, 0xC4, 0xC6, 0xD0].choose(rng).unwrap()
 }
 
-/// Emit lightweight tapscripts so we mix success, CHECKSIG, and OP_TRUE leaves.
+/// Emit lightweight tapscripts so we mix success, CHECKSIG, and `OP_TRUE` leaves.
 fn random_tapscript<R: RngCore>(rng: &mut R) -> Vec<u8> {
     match rng.gen_range(0..3) {
         0 => vec![OP_PUSHNUM_1.to_u8()],
@@ -621,10 +601,4 @@ fn random_node_hash<R: RngCore>(rng: &mut R) -> [u8; 32] {
     let mut hash = [0u8; 32];
     rng.fill_bytes(&mut hash);
     hash
-}
-
-impl Default for CoinbaseTxGenerator {
-    fn default() -> Self {
-        Self {}
-    }
 }

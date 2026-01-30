@@ -205,69 +205,65 @@ where
             .get(&self.handle)
             .ok_or_else(|| Error::illegal_state("StdOutObserver is missing"))?;
         let mut found = false;
-        match &stdout_observer.output {
-            Some(x) => {
-                if let Some(caps) = re.captures(x)
-                    && let Some(matched) = caps.get(1)
-                {
-                    found = true;
-                    match matched.as_bytes() {
-                        b"CRASH" => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::CRASH)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::CRASH);
-                        }
-                        b"INFLATION" => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::INFLATION)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::INFLATION);
-                        }
-                        b"BLOCKTEMPLATE" => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::BLOCKTEMPLATE)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::BLOCKTEMPLATE);
-                        }
-                        b"NETSPLIT" => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::NETSPLIT)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::NETSPLIT);
-                        }
-                        b"CONSENSUS" => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::CONSENSUS)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::CONSENSUS);
-                        }
-                        _ => {
-                            self.stats
-                                .map
-                                .entry(CrashCause::OTHER)
-                                .and_modify(|c| *c += 1)
-                                .or_insert(1);
-                            cause = Some(CrashCause::OTHER);
-                        }
-                    }
+        if let Some(x) = &stdout_observer.output
+            && let Some(caps) = re.captures(x)
+            && let Some(matched) = caps.get(1)
+        {
+            found = true;
+            match matched.as_bytes() {
+                b"CRASH" => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::CRASH)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::CRASH);
+                }
+                b"INFLATION" => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::INFLATION)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::INFLATION);
+                }
+                b"BLOCKTEMPLATE" => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::BLOCKTEMPLATE)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::BLOCKTEMPLATE);
+                }
+                b"NETSPLIT" => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::NETSPLIT)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::NETSPLIT);
+                }
+                b"CONSENSUS" => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::CONSENSUS)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::CONSENSUS);
+                }
+                _ => {
+                    self.stats
+                        .map
+                        .entry(CrashCause::OTHER)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    cause = Some(CrashCause::OTHER);
                 }
             }
-            None => {}
         }
 
         if found {
-            for (cause, value) in self.stats.map.iter() {
+            for (cause, value) in &self.stats.map {
                 if *value > 0 {
                     let name: String = cause.to_string();
                     manager.fire(

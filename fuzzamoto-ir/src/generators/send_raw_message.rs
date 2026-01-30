@@ -10,10 +10,12 @@ pub struct SendMessageGenerator {
 }
 
 impl SendMessageGenerator {
+    #[must_use]
     pub fn new(allowed_msg_types: Vec<String>) -> Self {
         Self { allowed_msg_types }
     }
 
+    #[must_use]
     pub fn default_with_erlay() -> Self {
         let mut default = Self::default();
         default.allowed_msg_types.extend(vec![
@@ -78,9 +80,10 @@ impl<R: RngCore> Generator<R> for SendMessageGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         // Use a connection from the parent program or load from context
-        let conn_var_index = match builder.get_random_variable(rng, Variable::Connection) {
-            Some(v) => v,
-            None => {
+        let conn_var_index =
+            if let Some(v) = builder.get_random_variable(rng, &Variable::Connection) {
+                v
+            } else {
                 if builder.context().num_connections == 0 {
                     return Err(GeneratorError::InvalidContext(builder.context().clone()));
                 }
@@ -95,8 +98,7 @@ impl<R: RngCore> Generator<R> for SendMessageGenerator {
                     .expect("Inserting LoadConnection should always succeed")
                     .pop()
                     .expect("LoadConnection should always produce a var")
-            }
-        };
+            };
 
         let type_as_bytes = |t: &str| -> [char; 12] {
             let mut bytes = ['\0'; 12];
@@ -115,8 +117,7 @@ impl<R: RngCore> Generator<R> for SendMessageGenerator {
             .pop()
             .expect("LoadMsgType should always produce a var");
 
-        let mut random_bytes = Vec::new();
-        random_bytes.resize(64, 0);
+        let mut random_bytes = vec![0; 64];
         rng.fill_bytes(&mut random_bytes);
         let bytes_var = builder
             .append(Instruction {

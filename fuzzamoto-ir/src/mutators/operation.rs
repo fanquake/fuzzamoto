@@ -1,4 +1,4 @@
-use std::{time::Duration, u64};
+use std::time::Duration;
 
 use super::{Mutator, MutatorResult};
 use crate::PerTestcaseMetadata;
@@ -30,6 +30,9 @@ pub struct OperationMutator<M> {
 }
 
 impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
+    #[expect(clippy::cast_sign_loss)]
+    #[expect(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_precision_loss)]
     fn mutate(
         &mut self,
         program: &mut Program,
@@ -156,7 +159,7 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
             Operation::LoadDuration(_) => Operation::LoadDuration(Duration::from_secs(
                 *[
                     1,
-                    2 << 0,
+                    2,
                     2 << 1,
                     2 << 2,
                     2 << 3,
@@ -209,7 +212,9 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
                 .unwrap(),
             ),
             // 2009-2030
-            Operation::LoadTime(_) => Operation::LoadTime(rng.gen_range(1241791814..1893452400)),
+            Operation::LoadTime(_) => {
+                Operation::LoadTime(rng.gen_range(1_241_791_814..1_893_452_400))
+            }
             Operation::LoadAmount(amount) => Operation::LoadAmount(
                 *[
                     0,
@@ -241,15 +246,15 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
             }
             Operation::LoadTxVersion(version) => Operation::LoadTxVersion(
                 // Standard tx version should be added here
-                *[0u32, 1, 2, 3, 4, 0xffffffff - 1, 0xffffffff, rng.r#gen()]
+                *[0u32, 1, 2, 3, 4, 0xffff_ffff - 1, 0xffff_ffff, rng.r#gen()]
                     .iter()
                     .filter(|v| *v != version)
                     .choose(rng)
                     .unwrap(),
             ),
             Operation::LoadLockTime(lock_time) => {
-                let lock_time = match *lock_time < 500_000_000u32 {
-                    true => *[
+                let lock_time = if *lock_time < 500_000_000u32 {
+                    *[
                         0,
                         *lock_time - 1,
                         *lock_time + 1,
@@ -259,8 +264,9 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
                         rng.r#gen(),
                     ]
                     .choose(rng)
-                    .unwrap(),
-                    false => *[
+                    .unwrap()
+                } else {
+                    *[
                         0,
                         *lock_time - 1, // one second
                         *lock_time + 1,
@@ -268,13 +274,13 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
                         *lock_time + (10 * 60),
                         *lock_time - (24 * 60 * 60), // one day
                         *lock_time + (24 * 60 * 60),
-                        u32::max_value(),
-                        u32::max_value() - 1,
-                        rng.gen_range(500_000_000u32..u32::max_value()),
+                        u32::MAX,
+                        u32::MAX - 1,
+                        rng.gen_range(500_000_000u32..u32::MAX),
                         rng.r#gen(),
                     ]
                     .choose(rng)
-                    .unwrap(),
+                    .unwrap()
                 };
 
                 Operation::LoadLockTime(lock_time)
@@ -282,18 +288,18 @@ impl<R: RngCore, M: OperationByteMutator> Mutator<R> for OperationMutator<M> {
             Operation::LoadSequence(sequence) => {
                 let type_flag = 1u32 << 22;
                 let disable_flag = 1u32 << 31;
-                let mask = type_flag | 0x0000ffffu32;
+                let mask = type_flag | 0x0000_ffff_u32;
 
                 let mut rnd = rng.r#gen::<u32>() & mask;
 
                 if rng.gen_bool(0.05) {
-                    rnd = rnd ^ disable_flag;
+                    rnd ^= disable_flag;
                 }
 
                 Operation::LoadSequence(
                     *[
-                        0xffffffffu32,     // final
-                        0xffffffffu32 - 1, // non-final
+                        0xffff_ffff_u32,     // final
+                        0xffff_ffff_u32 - 1, // non-final
                         rnd,
                         rng.r#gen(),
                     ]
@@ -435,36 +441,30 @@ fn mutate_addr_payload<R: RngCore, M: OperationByteMutator>(
     byte_mutator: &mut M,
 ) {
     if payload.is_empty() {
-        match network.expected_payload_len() {
-            Some(expected) => {
-                payload.resize(expected, 0);
-                rng.fill_bytes(payload.as_mut_slice());
-            }
-            None => {
-                let len = rng.gen_range(1..=MAX_UNKNOWN_ADDR_PAYLOAD);
-                payload.resize(len, 0);
-                rng.fill_bytes(payload.as_mut_slice());
-            }
+        if let Some(expected) = network.expected_payload_len() {
+            payload.resize(expected, 0);
+            rng.fill_bytes(payload.as_mut_slice());
+        } else {
+            let len = rng.gen_range(1..=MAX_UNKNOWN_ADDR_PAYLOAD);
+            payload.resize(len, 0);
+            rng.fill_bytes(payload.as_mut_slice());
         }
     }
 
     byte_mutator.mutate_bytes(payload);
 
-    match network.expected_payload_len() {
-        Some(expected) => {
-            if payload.len() < expected {
-                payload.resize(expected, 0);
-            } else if payload.len() > expected {
-                payload.truncate(expected);
-            }
+    if let Some(expected) = network.expected_payload_len() {
+        if payload.len() < expected {
+            payload.resize(expected, 0);
+        } else if payload.len() > expected {
+            payload.truncate(expected);
         }
-        None => {
-            if payload.is_empty() {
-                payload.push(0);
-            }
-            if payload.len() > MAX_UNKNOWN_ADDR_PAYLOAD {
-                payload.truncate(MAX_UNKNOWN_ADDR_PAYLOAD);
-            }
+    } else {
+        if payload.is_empty() {
+            payload.push(0);
+        }
+        if payload.len() > MAX_UNKNOWN_ADDR_PAYLOAD {
+            payload.truncate(MAX_UNKNOWN_ADDR_PAYLOAD);
         }
     }
 }

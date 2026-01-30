@@ -69,11 +69,13 @@ pub struct GenericScenario<TX: Transport, T: Target<TX>> {
     _phantom: std::marker::PhantomData<(TX, T)>,
 }
 
+const INTERVAL: u64 = 1;
+
 impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
     fn from_target(mut target: T) -> Result<Self, String> {
         let genesis_block = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
 
-        let mut time = genesis_block.header.time as u64;
+        let mut time = u64::from(genesis_block.header.time);
         target.set_mocktime(time)?;
 
         let mut connections = vec![
@@ -136,7 +138,8 @@ impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
         ];
 
         let mut send_compact = false;
-        for (connection, relay, wtxidrelay, addrv2, erlay) in connections.iter_mut() {
+        #[expect(clippy::cast_possible_wrap)]
+        for (connection, relay, wtxidrelay, addrv2, erlay) in &mut connections {
             connection.version_handshake(HandshakeOpts {
                 time: time as i64,
                 relay: *relay,
@@ -154,7 +157,6 @@ impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
         }
 
         let mut prev_hash = genesis_block.block_hash();
-        const INTERVAL: u64 = 1;
 
         let mut dictionary = FileDictionary::new();
 
@@ -162,7 +164,11 @@ impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
         for height in 1..=200 {
             time += INTERVAL;
 
-            let block = test_utils::mining::mine_block(prev_hash, height, time as u32)?;
+            let block = test_utils::mining::mine_block(
+                prev_hash,
+                height,
+                u32::try_from(time).map_err(|_| "Failed to convert time to u32".to_string())?,
+            );
 
             // Send block to the first connection
             connections[0]
@@ -191,14 +197,14 @@ impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
         dictionary.write(&mut output);
 
         let result = String::from_utf8(output.into_inner()).unwrap();
-        println!("{}", result);
+        println!("{result}");
 
-        for (connection, _, _, _, _) in connections.iter_mut() {
+        for (connection, _, _, _, _) in &mut connections {
             connection.ping()?;
         }
 
         // Announce the tip on all connections
-        for (connection, _, _, _, _) in connections.iter_mut() {
+        for (connection, _, _, _, _) in &mut connections {
             let inv = NetworkMessage::Inv(vec![Inventory::Block(prev_hash)]);
             connection.send_and_recv(&("inv".to_string(), encode::serialize(&inv)), false)?;
         }
@@ -213,7 +219,7 @@ impl<TX: Transport, T: Target<TX>> GenericScenario<TX, T> {
     }
 }
 
-impl<'a, TX: Transport, T: Target<TX>> Scenario<'a, TestCase> for GenericScenario<TX, T> {
+impl<TX: Transport, T: Target<TX>> Scenario<'_, TestCase> for GenericScenario<TX, T> {
     fn new(args: &[String]) -> Result<Self, String> {
         let target = T::from_path(&args[1])?;
         Self::from_target(target)
@@ -247,18 +253,18 @@ impl<'a, TX: Transport, T: Target<TX>> Scenario<'a, TestCase> for GenericScenari
                     let _ = self.target.set_mocktime(time);
                 }
                 Action::AdvanceTime { seconds } => {
-                    self.time += seconds as u64;
+                    self.time += u64::from(seconds);
                     let _ = self.target.set_mocktime(self.time);
                 }
             }
         }
 
-        for connection in self.connections.iter_mut() {
+        for connection in &mut self.connections {
             let _ = connection.ping();
         }
 
         if let Err(e) = self.target.is_alive() {
-            return ScenarioResult::Fail(format!("Target is not alive: {}", e));
+            return ScenarioResult::Fail(format!("Target is not alive: {e}"));
         }
 
         ScenarioResult::Ok
@@ -278,7 +284,7 @@ impl Encodable for Action {
                     ConnectionType::Outbound => {
                         true.consensus_encode(s)?;
                     }
-                };
+                }
                 len += 1;
                 Ok(len)
             }
@@ -363,7 +369,10 @@ impl Decodable for TestCase {
         if len > 1000 {
             return Err(encode::Error::ParseFailed("too many actions"));
         }
-        let mut actions = Vec::with_capacity(len as usize);
+        let mut actions = Vec::with_capacity(
+            usize::try_from(len)
+                .map_err(|_| encode::Error::ParseFailed("Failed to convert len to usize"))?,
+        );
         for _ in 0..len {
             actions.push(Action::consensus_decode(d)?);
         }

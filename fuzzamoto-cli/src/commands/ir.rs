@@ -1,5 +1,5 @@
 use clap::{Subcommand, ValueEnum};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use fuzzamoto_ir::compiler::Compiler;
 use fuzzamoto_ir::{
@@ -28,7 +28,7 @@ impl IrCommand {
                 programs,
                 context,
                 generators,
-            } => generate_ir(output, *iterations, *programs, context, generators),
+            } => generate_ir(output, *iterations, *programs, context, generators.as_ref()),
             IRCommands::Compile { input, output } => compile_ir(input, output),
             IRCommands::Print { input, json } => print_ir(input, *json),
             IRCommands::Convert {
@@ -108,13 +108,13 @@ pub enum CorpusFormat {
 }
 
 pub fn generate_ir(
-    output: &PathBuf,
+    output: &Path,
     iterations: usize,
     programs: usize,
-    context: &PathBuf,
-    generator_names: &Option<Vec<String>>,
+    context: &Path,
+    generator_names: Option<&Vec<String>>,
 ) -> Result<()> {
-    let context = std::fs::read(context.clone())?;
+    let context = std::fs::read(context)?;
     let context: FullProgramContext = postcard::from_bytes(&context)?;
 
     let mut rng = rand::thread_rng();
@@ -153,7 +153,7 @@ pub fn generate_ir(
             let variable_threshold = builder.variable_count();
 
             let generator = generators.choose(&mut rng).unwrap();
-            if let Err(_) = generator.generate(&mut builder, &mut rng, None) {
+            if generator.generate(&mut builder, &mut rng, None).is_err() {
                 continue;
             }
 
@@ -161,10 +161,7 @@ pub fn generate_ir(
 
             let second_half = Program::unchecked_new(
                 builder.context().clone(),
-                program.instructions[insertion_index..]
-                    .iter()
-                    .cloned()
-                    .collect(),
+                program.instructions[insertion_index..].to_vec(),
             );
 
             builder
@@ -177,7 +174,7 @@ pub fn generate_ir(
 
             program = builder.finalize().unwrap();
             insertion_index = program
-                .get_random_instruction_index(&mut rng, InstructionContext::Global)
+                .get_random_instruction_index(&mut rng, &InstructionContext::Global)
                 .unwrap()
                 .max(1);
         }
@@ -201,24 +198,24 @@ fn all_generators(context: &FullProgramContext) -> Vec<Box<dyn Generator<ThreadR
         Box::new(AdvanceTimeGenerator::default()),
         Box::new(HeaderGenerator::new(context.headers.clone())),
         Box::new(BlockGenerator::default()),
-        Box::new(BloomFilterLoadGenerator::default()),
-        Box::new(BloomFilterAddGenerator::default()),
-        Box::new(BloomFilterClearGenerator::default()),
-        Box::new(CompactFilterQueryGenerator::default()),
-        Box::new(GetDataGenerator::default()),
-        Box::new(InventoryGenerator::default()),
-        Box::new(SendBlockGenerator::default()),
-        Box::new(AddTxToBlockGenerator::default()),
+        Box::new(BloomFilterLoadGenerator),
+        Box::new(BloomFilterAddGenerator),
+        Box::new(BloomFilterClearGenerator),
+        Box::new(CompactFilterQueryGenerator),
+        Box::new(GetDataGenerator),
+        Box::new(InventoryGenerator),
+        Box::new(SendBlockGenerator),
+        Box::new(AddTxToBlockGenerator),
         Box::new(SendMessageGenerator::default()),
         Box::new(WitnessGenerator::new()),
-        Box::new(SingleTxGenerator::default()),
-        Box::new(OneParentOneChildGenerator::default()),
-        Box::new(LongChainGenerator::default()),
-        Box::new(LargeTxGenerator::default()),
+        Box::new(SingleTxGenerator),
+        Box::new(OneParentOneChildGenerator),
+        Box::new(LongChainGenerator),
+        Box::new(LargeTxGenerator),
         Box::new(TxoGenerator::new(context.txos.clone())),
         Box::new(AddrRelayGenerator::default()),
         Box::new(AddrRelayV2Generator::default()),
-        Box::new(GetAddrGenerator::default()),
+        Box::new(GetAddrGenerator),
     ]
 }
 
@@ -237,11 +234,11 @@ fn compile_ir_file(input: &PathBuf, output: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn compile_ir_dir(input: &PathBuf, output: &PathBuf) -> Result<()> {
+fn compile_ir_dir(input: &Path, output: &Path) -> Result<()> {
     for entry in input.read_dir()? {
         let path = entry?.path();
-        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with(".") {
-            log::trace!("Compiling {:?}", path);
+        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with('.') {
+            log::trace!("Compiling {:?}", path.display());
             compile_ir_file(
                 &path,
                 &output
@@ -275,7 +272,7 @@ pub fn print_ir(input: &PathBuf, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(&program)?);
     } else {
-        println!("{}", program);
+        println!("{program}");
     }
     Ok(())
 }
@@ -283,12 +280,12 @@ pub fn print_ir(input: &PathBuf, json: bool) -> Result<()> {
 fn convert_ir_dir(
     from: &CorpusFormat,
     to: &CorpusFormat,
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
 ) -> Result<()> {
     for entry in input.read_dir()? {
         let path = entry?.path();
-        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with(".") {
+        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with('.') {
             let mut new_path = output.join(path.file_name().unwrap().to_str().unwrap());
 
             match *to {
@@ -301,7 +298,11 @@ fn convert_ir_dir(
             }
 
             if let Err(e) = convert_ir_file(from, to, &path, &new_path) {
-                log::warn!("Failed to convert from {:?} to {:?}: {}", path, new_path, e);
+                log::warn!(
+                    "Failed to convert from {:?} to {:?}: {e}",
+                    path.display(),
+                    new_path.display()
+                );
             }
         }
     }
@@ -354,6 +355,9 @@ struct Point {
     compiled_size: usize,
 }
 
+#[expect(clippy::cast_sign_loss)]
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_precision_loss)]
 fn print_size_scatter_plot(points: &[Point]) {
     const PLOT_WIDTH: usize = 100;
     const PLOT_HEIGHT: usize = 40;
@@ -381,12 +385,12 @@ fn print_size_scatter_plot(points: &[Point]) {
     }
 
     // Print Y-axis labels and plot
-    for i in 0..PLOT_HEIGHT {
+    for (i, row) in grid.iter().enumerate().take(PLOT_HEIGHT) {
         let y_value = max_ir as f64 * (PLOT_HEIGHT - 1 - i) as f64 / (PLOT_HEIGHT - 1) as f64;
         print!("{:>5}K ┤", (y_value / 1024.0).round());
 
         // Print row
-        for count in &grid[i] {
+        for count in row {
             match count {
                 0 => print!(" "),
                 1 => print!("·"),
@@ -408,13 +412,13 @@ fn print_size_scatter_plot(points: &[Point]) {
     // Print X-axis labels
     print!("       ");
     for i in 0..=5 {
-        let x_value = max_compiled as f64 * i as f64 / 5.0;
+        let x_value = max_compiled as f64 * f64::from(i) / 5.0;
         let label = if x_value >= 1024.0 * 1024.0 {
             format!("{:.1}M", x_value / (1024.0 * 1024.0))
         } else {
             format!("{}K", (x_value / 1024.0).round())
         };
-        print!("{:>12}", label);
+        print!("{label:>12}");
     }
     println!();
 
@@ -422,7 +426,7 @@ fn print_size_scatter_plot(points: &[Point]) {
     println!("\nDensity: · (1 program)  : (2-3)  ⁘ (4-5)  ⬢ (>5 programs)");
 }
 
-pub fn analyze_ir(input: &PathBuf) -> Result<()> {
+pub fn analyze_ir(input: &Path) -> Result<()> {
     const IR_BUCKET_SIZE: usize = 256;
     const COMPILED_BUCKET_SIZE: usize = 1024 * 75;
     const SENDS_BUCKET_SIZE: usize = 1;
@@ -439,7 +443,7 @@ pub fn analyze_ir(input: &PathBuf) -> Result<()> {
     // Process each file
     for entry in input.read_dir()? {
         let path = entry?.path();
-        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with(".") {
+        if path.is_file() && !path.file_name().unwrap().to_str().unwrap().starts_with('.') {
             // Read and parse the IR file
             let bytes = std::fs::read(&path)?;
             if let Ok(program) = postcard::from_bytes::<fuzzamoto_ir::Program>(&bytes) {
@@ -499,29 +503,26 @@ pub fn analyze_ir(input: &PathBuf) -> Result<()> {
     print_size_scatter_plot(&scatter_points);
 
     println!(
-        "\nIR Instruction Count Distribution (bucket size: {} instructions)",
-        INSTRUCTIONS_BUCKET_SIZE
+        "\nIR Instruction Count Distribution (bucket size: {INSTRUCTIONS_BUCKET_SIZE} instructions)"
     );
     println!("----------------------------------------------------");
     print_histogram(&instructions_hist, INSTRUCTIONS_BUCKET_SIZE, "instructions");
 
-    println!(
-        "\nIR File Size Distribution (bucket size: {} bytes)",
-        IR_BUCKET_SIZE
-    );
+    println!("\nIR File Size Distribution (bucket size: {IR_BUCKET_SIZE} bytes)");
     println!("------------------------------------------------");
     print_histogram(&ir_size_hist, IR_BUCKET_SIZE, "bytes");
 
-    println!(
-        "\nCompiled Size Distribution (bucket size: {} bytes)",
-        COMPILED_BUCKET_SIZE
-    );
+    println!("\nCompiled Size Distribution (bucket size: {COMPILED_BUCKET_SIZE} bytes)");
     println!("-------------------------------------------------");
     print_histogram(&compiled_size_hist, COMPILED_BUCKET_SIZE, "bytes");
 
     Ok(())
 }
+const WIDTH: usize = 60;
 
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_sign_loss)]
+#[expect(clippy::cast_precision_loss)]
 fn print_histogram(hist: &[i32], bucket_size: usize, label: &str) {
     let max_count = hist.iter().max().unwrap_or(&0);
     if *max_count == 0 {
@@ -529,13 +530,12 @@ fn print_histogram(hist: &[i32], bucket_size: usize, label: &str) {
         return;
     }
 
-    const WIDTH: usize = 60;
     // Find the width needed for the largest number to ensure proper alignment
     let max_width = (hist.len() * bucket_size).to_string().len();
 
     for (i, count) in hist.iter().enumerate() {
         if *count > 0 {
-            let bar_width = (*count as f64 / *max_count as f64 * WIDTH as f64) as usize;
+            let bar_width = (f64::from(*count) / f64::from(*max_count) * WIDTH as f64) as usize;
             println!(
                 "{:>width$}-{:<width$} {} {:<5}[{:>4}]: {}",
                 i * bucket_size,

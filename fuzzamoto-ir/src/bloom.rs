@@ -1,4 +1,4 @@
-/// Rust transplation from https://github.com/bitcoin/bitcoin/blob/master/src/common/bloom.cpp
+/// Rust transplation from <https://github.com/bitcoin/bitcoin/blob/master/src/common/bloom.cpp>
 // why do we need this code? because `filterload` message require us that we send the filter itself. So we need to construct the bloom filter on the client (fuzzer) side too.
 use murmurs::murmur3_x86_32;
 
@@ -8,9 +8,11 @@ pub(crate) const MAX_BLOOM_FILTER_SIZE: u32 = 36000;
 pub(crate) const MAX_HASH_FUNCS: u32 = 50;
 
 // Hash the data
+#[must_use]
+#[expect(clippy::cast_possible_truncation)]
 pub fn hash(hashnum: u32, size: usize, key: &[u8]) -> u32 {
     // this needs to be wrapping else it panics in debug mode
-    let a = murmur3_x86_32(key, hashnum.wrapping_mul(0xFBA4C795));
+    let a = murmur3_x86_32(key, hashnum.wrapping_mul(0xFBA4_C795));
     let b = (size * 8) as u32;
     a % b
 }

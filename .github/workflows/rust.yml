@@ -34,3 +34,5 @@ jobs:
       run: cargo install cargo-hack
     - name: Run test for all features
       run: cargo hack test --workspace --each-feature
+    - name: Run cargo clippy
+      run: cargo clippy # maybe --no-deps? should add it if we see problems in the future

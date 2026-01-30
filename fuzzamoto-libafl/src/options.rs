@@ -7,7 +7,6 @@ use libafl_bolts::core_affinity::{CoreId, Cores};
 #[readonly::make]
 #[derive(Parser, Debug)]
 #[clap(author, about, long_about = None)]
-#[allow(clippy::module_name_repetitions)]
 #[command(
     name = format!("fuzzamoto-libafl"),
     about,
@@ -205,7 +204,7 @@ impl FuzzerOptions {
 
     /// Returns the weight for a mutator/generator, or 0.0 if it's disabled
     pub fn mutator_weight<R: RngCore>(&self, name: &str, weight: f32, rng: &mut R) -> f32 {
-        let weight = if self.swarm < 1.0 {
+        if self.swarm < 1.0 {
             if rng.gen_bool(self.swarm) {
                 weight
             } else {
@@ -222,7 +221,6 @@ impl FuzzerOptions {
                     }
                 }
             }
-        };
-        weight
+        }
     }
 }

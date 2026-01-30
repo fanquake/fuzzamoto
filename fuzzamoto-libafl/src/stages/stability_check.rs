@@ -115,7 +115,7 @@ where
     C: AsRef<O>,
 {
     #[inline]
-    #[expect(clippy::too_many_lines, clippy::cast_precision_loss)]
+    #[expect(clippy::too_many_lines)]
     fn perform(
         &mut self,
         fuzzer: &mut Z,

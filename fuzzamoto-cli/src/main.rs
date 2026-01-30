@@ -3,7 +3,7 @@ mod error;
 mod utils;
 
 use clap::{Parser, Subcommand};
-use commands::*;
+use commands::{CoverageCommand, InitCommand, IrCommand, ir};
 use error::Result;
 use std::path::PathBuf;
 
@@ -134,13 +134,13 @@ fn main() -> Result<()> {
             nyx_dir,
             rpc_path,
         } => InitCommand::execute(
-            sharedir.clone(),
-            crash_handler.clone(),
-            bitcoind.clone(),
-            secondary_bitcoind.clone(),
-            scenario.clone(),
-            nyx_dir.clone(),
-            rpc_path.clone(),
+            sharedir,
+            crash_handler,
+            bitcoind,
+            secondary_bitcoind.as_ref(),
+            scenario,
+            nyx_dir,
+            rpc_path.as_ref(),
         ),
         Commands::Coverage {
             output,
@@ -150,10 +150,10 @@ fn main() -> Result<()> {
             profraws,
             run_only,
         } => CoverageCommand::execute(
-            output.clone(),
-            corpus.clone(),
-            bitcoind.clone(),
-            scenario.clone(),
+            output,
+            corpus,
+            bitcoind,
+            scenario,
             profraws.clone(),
             *run_only,
         ),
@@ -163,13 +163,7 @@ fn main() -> Result<()> {
             docker_image,
             cpu,
             scenario,
-        } => CoverageBatchCommand::execute(
-            output.clone(),
-            corpus.clone(),
-            docker_image.clone(),
-            cpu.clone(),
-            scenario.clone(),
-        ),
+        } => CoverageBatchCommand::execute(output, corpus, docker_image, *cpu, scenario),
         Commands::IR { command } => IrCommand::execute(command),
     }
 }

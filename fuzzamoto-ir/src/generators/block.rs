@@ -11,7 +11,7 @@ pub struct BlockGenerator {
     coinbase_generator: CoinbaseTxGenerator,
 }
 
-pub fn grafting_header<R: RngCore>(
+fn grafting_header<R: RngCore>(
     headers: &[Header],
     builder: &mut ProgramBuilder,
     rng: &mut R,
@@ -24,7 +24,7 @@ pub fn grafting_header<R: RngCore>(
     let tip_height = if let Some(nth) = nth {
         nth.height
     } else if let Some(tip_header) = headers.iter().max_by_key(|h| h.height) {
-        tip_header.height as u64
+        u64::from(tip_header.height)
     } else {
         return None;
     };
@@ -51,14 +51,14 @@ pub fn grafting_header<R: RngCore>(
             .expect("Inserting LoadHeader should always succeed")
             .pop()
             .expect("LoadHeader should always produce a var");
-        Some((var.index, tip_height - header.height as u64 + 1))
+        Some((var.index, tip_height - u64::from(header.height) + 1))
     } else {
         None
     }
 }
 
-pub fn tip_header(
-    header: &Option<Header>,
+fn tip_header(
+    header: Option<&Header>,
     builder: &mut ProgramBuilder,
     meta: Option<&PerTestcaseMetadata>,
 ) -> Option<usize> {
@@ -67,7 +67,7 @@ pub fn tip_header(
 
     if let Some(nth) = nth {
         let (var, _inst) = nth.defining_block;
-        return Some(var);
+        Some(var)
     } else if let Some(header) = header {
         let var = builder
             .append(Instruction {
@@ -91,7 +91,7 @@ pub fn tip_header(
     }
 }
 
-pub fn build_block_from_header<R: RngCore>(
+fn build_block_from_header<R: RngCore>(
     coinbase_generator: &CoinbaseTxGenerator,
     builder: &mut ProgramBuilder,
     rng: &mut R,
@@ -99,31 +99,31 @@ pub fn build_block_from_header<R: RngCore>(
     meta: Option<&PerTestcaseMetadata>,
 ) -> Result<(IndexedVariable, IndexedVariable), GeneratorError> {
     let time_var = builder
-        .get_random_variable(rng, Variable::Time)
+        .get_random_variable(rng, &Variable::Time)
         .ok_or(GeneratorError::MissingVariables)?;
-    let mut random_tx_vars = builder.get_random_variables(rng, Variable::ConstTx);
+    let mut random_tx_vars = builder.get_random_variables(rng, &Variable::ConstTx);
     random_tx_vars.sort_by_key(|tx| tx.index);
 
     let begin_txs_var =
-        builder.force_append_expect_output(vec![], Operation::BeginBlockTransactions);
+        builder.force_append_expect_output(vec![], &Operation::BeginBlockTransactions);
 
     for tx_var in random_tx_vars {
-        builder.force_append(vec![begin_txs_var.index, tx_var.index], Operation::AddTx);
+        builder.force_append(vec![begin_txs_var.index, tx_var.index], &Operation::AddTx);
     }
 
     let end_txs_var = builder
-        .force_append_expect_output(vec![begin_txs_var.index], Operation::EndBlockTransactions);
+        .force_append_expect_output(vec![begin_txs_var.index], &Operation::EndBlockTransactions);
 
     let block_version_var =
-        builder.force_append_expect_output(vec![], Operation::LoadBlockVersion(5));
+        builder.force_append_expect_output(vec![], &Operation::LoadBlockVersion(5));
 
     let coinbase_tx_var =
-        if let Some(coinbase_var) = builder.get_random_variable(rng, Variable::CoinbaseTx) {
+        if let Some(coinbase_var) = builder.get_random_variable(rng, &Variable::CoinbaseTx) {
             coinbase_var
         } else {
             coinbase_generator.generate(builder, rng, meta)?;
             builder
-                .get_random_variable(rng, Variable::CoinbaseTx)
+                .get_random_variable(rng, &Variable::CoinbaseTx)
                 .unwrap()
         };
 
@@ -143,15 +143,15 @@ pub fn build_block_from_header<R: RngCore>(
     let conn_var = builder.get_or_create_random_connection(rng);
     builder.force_append(
         vec![conn_var.index, block_and_header_var[0].index],
-        Operation::SendHeader,
+        &Operation::SendHeader,
     );
     builder.force_append(
         vec![conn_var.index, block_and_header_var[1].index],
-        Operation::SendBlock,
+        &Operation::SendBlock,
     );
     builder.force_append(
         vec![block_and_header_var[2].index],
-        Operation::TakeCoinbaseTxo,
+        &Operation::TakeCoinbaseTxo,
     );
 
     Ok((
@@ -168,7 +168,7 @@ impl<R: RngCore> Generator<R> for BlockGenerator {
         meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         let header_var = if rng.gen_bool(0.5) {
-            builder.get_random_variable(rng, Variable::Header)
+            builder.get_random_variable(rng, &Variable::Header)
         } else {
             builder.get_nearest_sent_header()
         }
@@ -193,7 +193,7 @@ impl<R: RngCore> Generator<R> for BlockGenerator {
 impl Default for BlockGenerator {
     fn default() -> Self {
         Self {
-            coinbase_generator: CoinbaseTxGenerator::default(),
+            coinbase_generator: CoinbaseTxGenerator,
         }
     }
 }
@@ -212,7 +212,7 @@ impl<R: RngCore> Generator<R> for TipBlockGenerator {
         rng: &mut R,
         meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
-        let Some(header_var) = tip_header(&self.snapshot_tip, builder, meta) else {
+        let Some(header_var) = tip_header(self.snapshot_tip.as_ref(), builder, meta) else {
             return Ok(());
         };
 
@@ -237,21 +237,22 @@ impl<R: RngCore> Generator<R> for TipBlockGenerator {
             let from: usize = nth.defining_block.1 + 1;
             program.get_random_instruction_index_from(
                 rng,
-                <Self as Generator<R>>::requested_context(self),
+                &<Self as Generator<R>>::requested_context(self),
                 from,
             )
         } else {
             program
-                .get_random_instruction_index(rng, <Self as Generator<R>>::requested_context(self))
+                .get_random_instruction_index(rng, &<Self as Generator<R>>::requested_context(self))
         }
     }
 }
 
 impl TipBlockGenerator {
-    pub fn new(headers: Vec<Header>) -> Self {
+    #[must_use]
+    pub fn new(headers: &[Header]) -> Self {
         let max_header = headers.iter().max_by_key(|h| h.height).cloned();
         Self {
-            coinbase_generator: CoinbaseTxGenerator::default(),
+            coinbase_generator: CoinbaseTxGenerator,
             snapshot_tip: max_header,
         }
     }
@@ -277,7 +278,7 @@ impl<R: RngCore> Generator<R> for ReorgBlockGenerator {
         for _ in 0..length {
             let (new_header, _) =
                 build_block_from_header(&self.coinbase_generator, builder, rng, header_var, meta)?;
-            header_var = new_header.index
+            header_var = new_header.index;
         }
 
         Ok(())
@@ -299,12 +300,12 @@ impl<R: RngCore> Generator<R> for ReorgBlockGenerator {
             let from: usize = max.defining_block.1 + 1; // from here, any header that metadata has is defined.
             program.get_random_instruction_index_from(
                 rng,
-                <Self as Generator<R>>::requested_context(self),
+                &<Self as Generator<R>>::requested_context(self),
                 from,
             )
         } else {
             program
-                .get_random_instruction_index(rng, <Self as Generator<R>>::requested_context(self))
+                .get_random_instruction_index(rng, &<Self as Generator<R>>::requested_context(self))
         }
     }
 }
@@ -312,19 +313,20 @@ impl<R: RngCore> Generator<R> for ReorgBlockGenerator {
 impl Default for ReorgBlockGenerator {
     fn default() -> Self {
         Self {
-            coinbase_generator: CoinbaseTxGenerator::default(),
+            coinbase_generator: CoinbaseTxGenerator,
             headers: Vec::new(),
         }
     }
 }
 
 impl ReorgBlockGenerator {
+    #[must_use]
     pub fn new(mut headers: Vec<Header>) -> Self {
         headers.sort_by_key(|h| std::cmp::Reverse(h.height));
         headers.truncate(10);
 
         Self {
-            coinbase_generator: CoinbaseTxGenerator::default(),
+            coinbase_generator: CoinbaseTxGenerator,
             headers,
         }
     }
@@ -342,6 +344,7 @@ pub struct Header {
 }
 
 impl Header {
+    #[must_use]
     pub fn to_bitcoin_header(&self) -> bitcoin::block::Header {
         bitcoin::block::Header {
             version: bitcoin::block::Version::from_consensus(self.version),
@@ -353,6 +356,7 @@ impl Header {
         }
     }
 
+    #[must_use]
     pub fn block_hash(&self) -> BlockHash {
         let bitcoin_header = self.to_bitcoin_header();
         bitcoin_header.block_hash()
@@ -364,6 +368,7 @@ pub struct HeaderGenerator {
 }
 
 impl HeaderGenerator {
+    #[must_use]
     pub fn new(headers: Vec<Header>) -> Self {
         Self { headers }
     }
@@ -380,7 +385,7 @@ impl<R: RngCore> Generator<R> for HeaderGenerator {
 
         builder.force_append(
             vec![],
-            Operation::LoadHeader {
+            &Operation::LoadHeader {
                 prev: header.prev,
                 merkle_root: header.merkle_root,
                 nonce: header.nonce,
@@ -409,16 +414,16 @@ impl<R: RngCore> Generator<R> for SendBlockGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         let block_var = builder
-            .get_random_variable(rng, Variable::Block)
+            .get_random_variable(rng, &Variable::Block)
             .ok_or(GeneratorError::MissingVariables)?;
         let conn_var = builder.get_or_create_random_connection(rng);
 
         if rng.gen_bool(0.95) {
-            builder.force_append(vec![conn_var.index, block_var.index], Operation::SendBlock);
+            builder.force_append(vec![conn_var.index, block_var.index], &Operation::SendBlock);
         } else {
             builder.force_append(
                 vec![conn_var.index, block_var.index],
-                Operation::SendBlockNoWit,
+                &Operation::SendBlockNoWit,
             );
         }
         Ok(())
@@ -441,12 +446,12 @@ impl<R: RngCore> Generator<R> for AddTxToBlockGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         let block_var = builder
-            .get_nearest_variable(Variable::MutBlockTransactions)
+            .get_nearest_variable(&Variable::MutBlockTransactions)
             .ok_or(GeneratorError::MissingVariables)?;
-        let mut random_tx_vars = builder.get_random_variables(rng, Variable::ConstTx);
+        let mut random_tx_vars = builder.get_random_variables(rng, &Variable::ConstTx);
         random_tx_vars.sort_by_key(|tx| tx.index);
         for tx_var in random_tx_vars {
-            builder.force_append(vec![block_var.index, tx_var.index], Operation::AddTx);
+            builder.force_append(vec![block_var.index, tx_var.index], &Operation::AddTx);
         }
         Ok(())
     }

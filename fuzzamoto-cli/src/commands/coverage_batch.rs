@@ -23,7 +23,7 @@ impl ContainerCleaner {
 impl Drop for ContainerCleaner {
     fn drop(&mut self) {
         for cid in &self.ids {
-            log::info!("Cleaning up docker container {}", cid);
+            log::info!("Cleaning up docker container {cid}");
             let _ = Command::new("docker").args(["rm", "-f", cid]).status();
         }
     }
@@ -31,13 +31,13 @@ impl Drop for ContainerCleaner {
 
 impl CoverageBatchCommand {
     pub fn execute(
-        output: PathBuf,
-        corpus: PathBuf,
-        docker_image: String,
+        output: &PathBuf,
+        corpus: &Path,
+        docker_image: &str,
         cpu: Option<usize>,
-        scenario: String,
+        scenario: &str,
     ) -> Result<()> {
-        let found = Self::check_local_docker_image(&docker_image)?;
+        let found = Self::check_local_docker_image(docker_image)?;
         if !found {
             return Err(CliError::InvalidInput(
                 "fuzzamoto-coverage-generic docker image not found!".to_string(),
@@ -49,7 +49,7 @@ impl CoverageBatchCommand {
                 .map_err(|e| CliError::ProcessError(format!("Failed to get CPU parallelism: {e}")))?
                 .get(),
         };
-        let all_files = file_ops::read_dir_files(&corpus)?;
+        let all_files = file_ops::read_dir_files(corpus)?;
 
         if all_files.is_empty() {
             // if there's nothing then we do nothing
@@ -63,14 +63,14 @@ impl CoverageBatchCommand {
         if output.exists() {
             log::warn!(
                 "Output directory {:?} already exists. Overwriting it..",
-                output
+                output.display()
             );
-            fs::remove_dir_all(&output).map_err(|_| {
+            fs::remove_dir_all(output).map_err(|_| {
                 CliError::InvalidInput("Failed to remove existing output directory".to_string())
             })?;
         }
 
-        fs::create_dir(&output)
+        fs::create_dir(output)
             .map_err(|_| CliError::InvalidInput("Failed to create output directory".to_string()))?;
 
         let mut workdirs: Vec<PathBuf> = Vec::with_capacity(cpu_n);
@@ -107,15 +107,15 @@ impl CoverageBatchCommand {
 
         let mut containers: Vec<(usize, String)> = Vec::with_capacity(workdirs.len());
         let mut cleaner = ContainerCleaner::new(Vec::new());
-        log::info!("Spawning {} containers", cpu_n);
+        log::info!("Spawning {cpu_n} containers");
         for (i, workdir) in workdirs.iter().enumerate() {
             let cid = Self::run_split(
-                &docker_image,
+                docker_image,
                 &workdir.join("corpus"),
                 &workdir.join("output"),
-                &scenario,
+                scenario,
             )?;
-            log::info!("Started batch {} as container {}", i, cid);
+            log::info!("Started batch {i} as container {cid}");
             cleaner.add(cid.clone());
             containers.push((i, cid));
         }
@@ -124,25 +124,24 @@ impl CoverageBatchCommand {
 
         for (i, cid) in &containers {
             match Self::docker_wait(cid) {
-                Ok(code) if code == 0 => {
-                    log::info!("Batch {} finished successfully (container {})", i, cid);
+                Ok(0) => {
+                    log::info!("Batch {i} finished successfully (container {cid})");
                 }
                 Ok(code) => {
                     if let Ok(logs) = Command::new("docker").args(["logs", cid]).output() {
                         let stdout = String::from_utf8_lossy(&logs.stdout);
                         if !stdout.trim().is_empty() {
-                            log::error!("Container {} (batch {}) stdout:\n{}", cid, i, stdout);
+                            log::error!("Container {cid} (batch {i}) stdout:\n{stdout}");
                         }
                         let stderr = String::from_utf8_lossy(&logs.stderr);
                         if !stderr.trim().is_empty() {
-                            log::error!("Container {} (batch {}) stderr:\n{}", cid, i, stderr);
+                            log::error!("Container {cid} (batch {i}) stderr:\n{stderr}");
                         }
                     }
 
                     if first_error.is_none() {
                         first_error = Some(CliError::ProcessError(format!(
-                            "Batch {} failed: container {} exited with code {}",
-                            i, cid, code
+                            "Batch {i} failed: container {cid} exited with code {code}"
                         )));
                     }
                 }
@@ -171,7 +170,7 @@ impl CoverageBatchCommand {
         })?;
 
         log::info!("Started merging..");
-        Self::merge_corpus(&docker_image, &corpus, &output, &profraws_hosts)?;
+        Self::merge_corpus(docker_image, corpus, output, &profraws_hosts)?;
         Ok(())
     }
 
@@ -250,7 +249,7 @@ impl CoverageBatchCommand {
             "--bitcoind".into(),
             "/bitcoin/build_fuzz_cov/bin/bitcoind".into(),
             "--scenario".into(),
-            format!("/fuzzamoto/target/release/scenario-{}", scenario),
+            format!("/fuzzamoto/target/release/scenario-{scenario}"),
             "--run-only".into(),
         ];
 
@@ -356,10 +355,10 @@ impl CoverageBatchCommand {
                 for tag in repo_tags {
                     if let Some(tag) = tag.as_str() {
                         // tag format: name:version
-                        if let Some((name, _)) = tag.split_once(':') {
-                            if name == "fuzzamoto-coverage-generic" {
-                                return Ok(true);
-                            }
+                        if let Some((name, _)) = tag.split_once(':')
+                            && name == "fuzzamoto-coverage-generic"
+                        {
+                            return Ok(true);
                         }
                     }
                 }

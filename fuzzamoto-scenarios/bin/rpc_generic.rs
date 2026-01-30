@@ -67,11 +67,7 @@ impl RpcParamPool {
 
     fn param_key_from_json_key(key: &str) -> Option<&'static str> {
         match key {
-            "txid" => Some("hex"),
-            "wtxid" => Some("hex"),
-            "hash" => Some("hex"),
-            "blockhash" => Some("hex"),
-            "hex" => Some("hex"),
+            "txid" | "wtxid" | "hash" | "blockhash" | "hex" => Some("hex"),
             _ => None,
         }
     }
@@ -120,32 +116,12 @@ impl RpcParamPool {
         json_params: &mut Vec<serde_json::Value>,
     ) {
         match param {
-            RpcParam::Boolean(ParamSource::Pool(pool_index)) => {
-                if let Some(param) = self.get(param, *pool_index) {
-                    json_params.push(param);
-                }
-            }
-            RpcParam::Number(ParamSource::Pool(pool_index)) => {
-                if let Some(param) = self.get(param, *pool_index) {
-                    json_params.push(param);
-                }
-            }
-            RpcParam::Hex(ParamSource::Pool(pool_index)) => {
-                if let Some(param) = self.get(param, *pool_index) {
-                    json_params.push(param);
-                }
-            }
-            RpcParam::Base64(ParamSource::Pool(pool_index)) => {
-                if let Some(param) = self.get(param, *pool_index) {
-                    json_params.push(param);
-                }
-            }
-            RpcParam::String(ParamSource::Pool(pool_index)) => {
-                if let Some(param) = self.get(param, *pool_index) {
-                    json_params.push(param);
-                }
-            }
-            RpcParam::Array(ParamSource::Pool(pool_index)) => {
+            RpcParam::Boolean(ParamSource::Pool(pool_index))
+            | RpcParam::Number(ParamSource::Pool(pool_index))
+            | RpcParam::Hex(ParamSource::Pool(pool_index))
+            | RpcParam::Base64(ParamSource::Pool(pool_index))
+            | RpcParam::String(ParamSource::Pool(pool_index))
+            | RpcParam::Array(ParamSource::Pool(pool_index)) => {
                 if let Some(param) = self.get(param, *pool_index) {
                     json_params.push(param);
                 }
@@ -166,11 +142,11 @@ impl RpcParamPool {
                 RpcParam::Number(ParamSource::Fuzzer(n)) => json_params.push((*n).into()),
                 RpcParam::Hex(ParamSource::Fuzzer(h)) => json_params.push(hex::encode(h).into()),
                 RpcParam::Base64(ParamSource::Fuzzer(b)) => {
-                    json_params.push(BASE64_STANDARD.encode(b).into())
+                    json_params.push(BASE64_STANDARD.encode(b).into());
                 }
                 RpcParam::String(ParamSource::Fuzzer(s)) => json_params.push(s.clone().into()),
                 RpcParam::Array(ParamSource::Fuzzer(a)) => {
-                    self.get_json_params_inner(a, json_params)
+                    self.get_json_params_inner(a, json_params);
                 }
                 param => self.get_json_params_from_pool(param, json_params),
             }
@@ -196,11 +172,11 @@ struct RpcScenario {
     available_rpcs: Vec<String>,
 }
 
-impl<'a> Scenario<'a, TestCase> for RpcScenario {
+impl Scenario<'_, TestCase> for RpcScenario {
     fn new(args: &[String]) -> Result<Self, String> {
         let target = BitcoinCoreTarget::from_path(&args[1])?;
         let rpcs =
-            fs::read_to_string(&args[2]).map_err(|e| format!("Failed to parse file: {}", e))?;
+            fs::read_to_string(&args[2]).map_err(|e| format!("Failed to parse file: {e}"))?;
 
         // Note that any change in the file may invalidate existing seeds
         let mut available_rpcs: Vec<String> = vec![];
@@ -224,7 +200,7 @@ impl<'a> Scenario<'a, TestCase> for RpcScenario {
             .join("default");
         let _ = std::fs::remove_dir_all(&wallet_path);
 
-        log::debug!("{:?}", available_rpcs);
+        log::debug!("{available_rpcs:?}");
 
         Ok(Self {
             target,
@@ -247,7 +223,7 @@ impl<'a> Scenario<'a, TestCase> for RpcScenario {
             let rpc_count = self.available_rpcs.len();
             let rpc_name = &self.available_rpcs[rpc_call.name as usize % rpc_count];
 
-            log::info!("{} {:?}", rpc_name, params);
+            log::info!("{rpc_name} {params:?}");
 
             let Ok(result) = self
                 .target
@@ -259,14 +235,14 @@ impl<'a> Scenario<'a, TestCase> for RpcScenario {
                 continue;
             };
 
-            log::info!("\t-> {}", result);
+            log::info!("\t-> {result}");
 
             // Add result values to the `RpcParamPool`
             self.param_pool.add_rpc_result(result);
         }
 
         if let Err(e) = self.target.is_alive() {
-            return ScenarioResult::Fail(format!("Target is not alive: {}", e));
+            return ScenarioResult::Fail(format!("Target is not alive: {e}"));
         }
 
         ScenarioResult::Ok

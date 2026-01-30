@@ -1,41 +1,41 @@
 use crate::error::{CliError, Result};
 use crate::utils::{file_ops, nyx, process};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct InitCommand;
 
 impl InitCommand {
     pub fn execute(
-        sharedir: PathBuf,
-        crash_handler: PathBuf,
-        bitcoind: PathBuf,
-        secondary_bitcoind: Option<PathBuf>,
-        scenario: PathBuf,
-        nyx_dir: PathBuf,
-        rpc_path: Option<PathBuf>,
+        sharedir: &Path,
+        crash_handler: &Path,
+        bitcoind: &Path,
+        secondary_bitcoind: Option<&PathBuf>,
+        scenario: &Path,
+        nyx_dir: &Path,
+        rpc_path: Option<&PathBuf>,
     ) -> Result<()> {
-        file_ops::ensure_sharedir_not_exists(&sharedir)?;
-        file_ops::create_dir_all(&sharedir)?;
+        file_ops::ensure_sharedir_not_exists(sharedir)?;
+        file_ops::create_dir_all(sharedir)?;
 
-        file_ops::ensure_file_exists(&crash_handler)?;
-        file_ops::ensure_file_exists(&bitcoind)?;
-        file_ops::ensure_file_exists(&scenario)?;
+        file_ops::ensure_file_exists(crash_handler)?;
+        file_ops::ensure_file_exists(bitcoind)?;
+        file_ops::ensure_file_exists(scenario)?;
 
-        if let Some(ref secondary) = secondary_bitcoind {
+        if let Some(secondary) = secondary_bitcoind {
             file_ops::ensure_file_exists(secondary)?;
         }
 
-        if let Some(ref rpc) = rpc_path {
+        if let Some(rpc) = rpc_path {
             file_ops::ensure_file_exists(rpc)?;
-            file_ops::copy_file_to_dir(rpc, &sharedir)?;
+            file_ops::copy_file_to_dir(rpc, sharedir)?;
         }
 
         let mut all_deps = Vec::new();
         let mut binary_names = Vec::new();
 
         // Copy each binary and its dependencies
-        let mut binaries = vec![bitcoind, scenario.clone()];
-        if let Some(secondary) = secondary_bitcoind.clone() {
+        let mut binaries = vec![bitcoind, scenario];
+        if let Some(secondary) = secondary_bitcoind {
             binaries.push(secondary);
         }
 
@@ -46,7 +46,7 @@ impl InitCommand {
                 .to_str()
                 .ok_or_else(|| CliError::InvalidInput("Invalid binary name".to_string()))?;
 
-            file_ops::copy_file_to_dir(binary, &sharedir)?;
+            file_ops::copy_file_to_dir(binary, sharedir)?;
             all_deps.push(binary_name.to_string());
             binary_names.push(binary_name.to_string());
 
@@ -66,9 +66,9 @@ impl InitCommand {
 
                         // Copy the dependency
                         if let Err(e) = std::fs::copy(path, sharedir.join(name)) {
-                            log::warn!("Failed to copy {}: {}", name, e);
+                            log::warn!("Failed to copy {name}: {e}");
                         } else {
-                            log::info!("Copied dependency of {}: {}", binary_name, name);
+                            log::info!("Copied dependency of {binary_name}: {name}");
                         }
 
                         Some(name.to_string())
@@ -89,16 +89,16 @@ impl InitCommand {
             .ok_or_else(|| CliError::InvalidInput("Invalid crash handler name".to_string()))?
             .to_string();
 
-        file_ops::copy_file_to_dir(&crash_handler, &sharedir)?;
+        file_ops::copy_file_to_dir(crash_handler, sharedir)?;
         all_deps.push(crash_handler_name.clone());
         all_deps.sort();
         all_deps.dedup();
 
         log::info!("Created share directory: {}", sharedir.display());
 
-        nyx::compile_packer_binaries(&nyx_dir)?;
-        nyx::copy_packer_binaries(&nyx_dir, &sharedir)?;
-        nyx::generate_nyx_config(&nyx_dir, &sharedir)?;
+        nyx::compile_packer_binaries(nyx_dir)?;
+        nyx::copy_packer_binaries(nyx_dir, sharedir)?;
+        nyx::generate_nyx_config(nyx_dir, sharedir)?;
 
         // Create fuzz_no_pt.sh script
         let scenario_name = scenario
@@ -118,7 +118,7 @@ impl InitCommand {
             .and_then(|name| name.to_str());
 
         nyx::create_nyx_script(
-            &sharedir,
+            sharedir,
             &all_deps,
             &binary_names,
             &crash_handler_name,

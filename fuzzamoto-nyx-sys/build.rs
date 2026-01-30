@@ -1,12 +1,12 @@
 use std::{path::PathBuf, process::Command};
 
 // Get the afl coverage map size of the given binary
-fn get_map_size(binary: PathBuf) -> Option<String> {
+fn get_map_size(binary: &PathBuf) -> Option<String> {
     let output = String::from_utf8_lossy(
-        &Command::new(&binary)
+        &Command::new(binary)
             .env("AFL_DUMP_MAP_SIZE", "1")
             .output()
-            .unwrap_or_else(|_| panic!("Failed to execute {:?}", &binary))
+            .unwrap_or_else(|_| panic!("Failed to execute {:?}", &binary.display()))
             .stdout,
     )
     .trim()
@@ -20,7 +20,7 @@ fn main() {
     build.file("src/nyx-agent.c").define("NO_PT_NYX", None);
 
     let _ = std::env::var("BITCOIND_PATH").map(|path| {
-        if let Some(size) = get_map_size(path.into()) {
+        if let Some(size) = get_map_size(&path.into()) {
             build.define("TARGET_MAP_SIZE", &*size);
         }
     });

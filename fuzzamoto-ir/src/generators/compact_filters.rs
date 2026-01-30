@@ -18,14 +18,14 @@ impl<R: RngCore> Generator<R> for CompactFilterQueryGenerator {
         rng: &mut R,
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
-        let Some(header_var) = builder.get_random_variable(rng, Variable::Header) else {
+        let Some(header_var) = builder.get_random_variable(rng, &Variable::Header) else {
             return Err(GeneratorError::MissingVariables);
         };
         let connection_var = builder.get_or_create_random_connection(rng);
         let compact_filter_type_var =
-            builder.force_append_expect_output(vec![], Operation::LoadCompactFilterType(0));
+            builder.force_append_expect_output(vec![], &Operation::LoadCompactFilterType(0));
         let block_height_var = builder
-            .force_append_expect_output(vec![], Operation::LoadBlockHeight(rng.gen_range(0..200))); // TODO: Find a better way to generate block heights
+            .force_append_expect_output(vec![], &Operation::LoadBlockHeight(rng.gen_range(0..200))); // TODO: Find a better way to generate block heights
 
         let op = [
             Operation::SendGetCFilters,
@@ -44,7 +44,7 @@ impl<R: RngCore> Generator<R> for CompactFilterQueryGenerator {
                         block_height_var.index,
                         header_var.index,
                     ],
-                    op,
+                    &op,
                 );
             }
             Operation::SendGetCFCheckpt => {
@@ -54,7 +54,7 @@ impl<R: RngCore> Generator<R> for CompactFilterQueryGenerator {
                         compact_filter_type_var.index,
                         header_var.index,
                     ],
-                    op,
+                    &op,
                 );
             }
             _ => unreachable!(),

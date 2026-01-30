@@ -12,7 +12,7 @@ use bitcoin_hashes::sha256;
 /// Create a consolidation transaction at 1 sat/vb that consolidates all provided inputs into a
 /// single output.
 ///
-/// Expects the inputs to be P2WSH-OP_TRUE outputs (i.e. OP_0 sha256([OP_TRUE])) and the created
+/// Expects the inputs to be P2WSH-OP_TRUE outputs (i.e. `OP_0` sha256([`OP_TRUE`])) and the created
 /// output will also be a P2WSH-OP_TRUE output.
 pub fn create_consolidation_tx(
     inputs: &[(OutPoint, bitcoin::Amount)],
@@ -31,7 +31,7 @@ pub fn create_consolidation_tx(
         .map(|(outpoint, _)| TxIn {
             previous_output: *outpoint,
             script_sig: ScriptBuf::new(),
-            sequence: Sequence(0xFFFFFFFF),
+            sequence: Sequence(0xFFFF_FFFF),
             witness: p2wsh_optrue_witness.clone(),
         })
         .collect();
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_commitment_fixup() {
-        let mut block = mining::mine_block(BlockHash::all_zeros(), 1, 2).unwrap();
+        let mut block = mining::mine_block(BlockHash::all_zeros(), 1, 2);
         block.txdata.push(
             create_consolidation_tx(&[
                 (OutPoint::null(), Amount::from_int_btc(10)),

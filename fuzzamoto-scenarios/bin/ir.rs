@@ -78,14 +78,13 @@ fn probe_result_mapper(
     action_index: usize,
     metadata: &CompiledMetadata,
 ) -> impl Fn((usize, String, Vec<u8>)) -> ProbeResult {
-    let action_index = action_index;
     move |(conn, s, mut bytes): (usize, String, Vec<u8>)| match s.as_str() {
         "getblocktxn" => {
             let Ok(request) = BlockTransactionsRequest::consensus_decode_from_finite_reader(
                 &mut Cursor::new(&mut bytes),
             ) else {
                 return ProbeResult::Failure {
-                    command: s.to_string(),
+                    command: s.clone(),
                     reason: "getblocktxn: Fail to call consensus_decode_from_finite_reader"
                         .to_string(),
                 };
@@ -94,15 +93,15 @@ fn probe_result_mapper(
             let Some((_, block_var, tx_vars)) = metadata.block_variables(&request.block_hash)
             else {
                 return ProbeResult::Failure {
-                    command: s.to_string(),
-                    reason: format!("getblocktxn: block hash is not registered in the metadata"),
+                    command: s.clone(),
+                    reason: "getblocktxn: block hash is not registered in the metadata".to_string(),
                 };
             };
 
             let Some(conn_var) = metadata.connection_map().get(&conn) else {
                 return ProbeResult::Failure {
-                    command: s.to_string(),
-                    reason: format!("getblocktxn: couldn't find matching connection var"),
+                    command: s.clone(),
+                    reason: "getblocktxn: couldn't find matching connection var".to_string(),
                 };
             };
 
@@ -317,7 +316,7 @@ where
 
                     self.futurest = std::cmp::max(self.futurest, time);
                 }
-                _ => {}
+                CompiledAction::Connect(..) => {}
             }
         }
     }
@@ -334,7 +333,7 @@ where
     }
 
     fn ping_connections(&mut self) {
-        for connection in self.inner.connections.iter_mut() {
+        for connection in &mut self.inner.connections {
             let _ = connection.ping();
         }
     }
@@ -342,14 +341,14 @@ where
     fn evaluate_oracles(&mut self) -> ScenarioResult {
         let crash_oracle = CrashOracle::<TX>::default();
         if let OracleResult::Fail(e) = crash_oracle.evaluate(&mut self.inner.target) {
-            return ScenarioResult::Fail(format!("CRASH: CRASH; {}", e));
+            return ScenarioResult::Fail(format!("CRASH: CRASH; {e}",));
         }
 
         #[cfg(feature = "oracle_blocktemplate")]
         {
             let template_oracle = BlockTemplateOracle::<TX>::default();
             if let OracleResult::Fail(e) = template_oracle.evaluate(&mut self.inner.target) {
-                return ScenarioResult::Fail(format!("CRASH: BLOCKTEMPLATE; {}", e));
+                return ScenarioResult::Fail(format!("CRASH: BLOCKTEMPLATE; {e}"));
             }
         }
 
@@ -357,7 +356,7 @@ where
         {
             let inflation_oracle = InflationOracle::<TX>::default();
             if let OracleResult::Fail(e) = inflation_oracle.evaluate(&mut self.inner.target) {
-                return ScenarioResult::Fail(format!("CRASH: INFLATION; {}", e));
+                return ScenarioResult::Fail(format!("CRASH: INFLATION; {e}"));
             }
         }
 
@@ -368,7 +367,7 @@ where
                 primary: &self.inner.target,
                 reference: &self.second,
             }) {
-                return ScenarioResult::Fail(format!("CRASH: NETSPLIT; {}", e));
+                return ScenarioResult::Fail(format!("CRASH: NETSPLIT; {e}"));
             }
         }
 
@@ -384,7 +383,7 @@ where
                 poll_interval: Duration::from_millis(10),
                 futurest: self.futurest,
             }) {
-                return ScenarioResult::Fail(format!("CRASH: CONSENSUS; {}", e));
+                return ScenarioResult::Fail(format!("CRASH: CONSENSUS; {e}"));
             }
         }
 
@@ -410,16 +409,16 @@ pub fn probe_recent_block_hashes<T: HasBlockChainInterface>(
 
     let mut result = Vec::new();
     for (height, hash) in &hashes {
-        if let Some((header, _, _)) = meta.block_variables(&hash)
+        if let Some((header, _, _)) = meta.block_variables(hash)
             && let Some(inst) = meta.variable_indices().get(header)
         {
             result.push(RecentBlock {
                 height: *height,
                 defining_block: (header, *inst),
-            })
+            });
         }
     }
-    return Some(ProbeResult::RecentBlockes { result: result });
+    Some(ProbeResult::RecentBlockes { result })
 }
 
 impl<TX, T> Scenario<'_, TestCase> for IrScenario<TX, T>
@@ -431,7 +430,7 @@ where
         let inner: GenericScenario<TX, T> = GenericScenario::new(args)?;
 
         let context = Self::build_program_context(&inner);
-        log::info!("IR context: {:?}", context);
+        log::info!("IR context: {context:?}");
 
         let txos = Self::build_txos(&inner);
         let headers = Self::build_headers(&inner);
@@ -450,7 +449,7 @@ where
             probe_results: Vec::new(),
             #[cfg(any(feature = "oracle_netsplit", feature = "oracle_consensus"))]
             second,
-            futurest: genesis_time as u64,
+            futurest: u64::from(genesis_time),
         })
     }
 
@@ -459,10 +458,10 @@ where
         self.process_actions(testcase.program);
         self.ping_connections();
 
-        if self.recording_received_messages {
-            if let Some(ret) = probe_recent_block_hashes(&self.inner.target, &metadata) {
-                self.probe_results.push(ret);
-            }
+        if self.recording_received_messages
+            && let Some(ret) = probe_recent_block_hashes(&self.inner.target, &metadata)
+        {
+            self.probe_results.push(ret);
         }
 
         self.print_received();

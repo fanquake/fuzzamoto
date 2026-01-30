@@ -52,32 +52,32 @@ pub fn create_nyx_script(
     secondary_bitcoind: Option<&str>,
     rpc_path: Option<&str>,
 ) -> Result<()> {
-    let mut script = Vec::new();
-
-    script.push("chmod +x hget".to_string());
-    script.push("cp hget /tmp".to_string());
-    script.push("cd /tmp".to_string());
-    script.push("echo 0 > /proc/sys/kernel/randomize_va_space".to_string());
-    script.push("echo 0 > /proc/sys/kernel/printk".to_string());
-    script.push("./hget hcat_no_pt hcat".to_string());
-    script.push("./hget habort_no_pt habort".to_string());
+    let mut script = vec![
+        "chmod +x hget".to_string(),
+        "cp hget /tmp".to_string(),
+        "cd /tmp".to_string(),
+        "echo 0 > /proc/sys/kernel/randomize_va_space".to_string(),
+        "echo 0 > /proc/sys/kernel/printk".to_string(),
+        "./hget hcat_no_pt hcat".to_string(),
+        "./hget habort_no_pt habort".to_string(),
+    ];
 
     // Add dependencies
     for dep in all_deps {
-        script.push(format!("./hget {} {}", dep, dep));
+        script.push(format!("./hget {dep} {dep}"));
     }
 
     if let Some(rpc_path) = rpc_path {
-        script.push(format!("./hget {} {}", rpc_path, rpc_path));
+        script.push(format!("./hget {rpc_path} {rpc_path}"));
     }
 
     // Make executables
     for exe in &["habort", "hcat", "ld-linux-x86-64.so.2", crash_handler_name] {
-        script.push(format!("chmod +x {}", exe));
+        script.push(format!("chmod +x {exe}"));
     }
 
     for binary_name in binary_names {
-        script.push(format!("chmod +x {}", binary_name));
+        script.push(format!("chmod +x {binary_name}"));
     }
 
     script.push("export __AFL_DEFER_FORKSRV=1".to_string());
@@ -99,15 +99,14 @@ pub fn create_nyx_script(
     ]
     .join(":");
 
-    let asan_options = format!("ASAN_OPTIONS={}", asan_options);
-    let crash_handler_preload = format!("LD_PRELOAD=./{}", crash_handler_name);
+    let asan_options = format!("ASAN_OPTIONS={asan_options}");
+    let crash_handler_preload = format!("LD_PRELOAD=./{crash_handler_name}");
     let proxy_script = format!(
-        "{} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {} ./bitcoind \\$@",
-        asan_options, crash_handler_preload,
+        "{asan_options} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {crash_handler_preload} ./bitcoind \\$@",
     );
 
     script.push("echo \"#!/bin/sh\" > ./bitcoind_proxy".to_string());
-    script.push(format!("echo \"{}\" >> ./bitcoind_proxy", proxy_script));
+    script.push(format!("echo \"{proxy_script}\" >> ./bitcoind_proxy"));
     script.push("chmod +x ./bitcoind_proxy".to_string());
 
     // Run the scenario

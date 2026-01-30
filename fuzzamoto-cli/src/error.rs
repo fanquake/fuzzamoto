@@ -14,13 +14,13 @@ pub enum CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CliError::IoError(e) => write!(f, "IO error: {}", e),
-            CliError::JsonError(e) => write!(f, "JSON error: {}", e),
-            CliError::PostcardError(e) => write!(f, "Postcard error: {}", e),
-            CliError::ProcessError(msg) => write!(f, "Process error: {}", msg),
-            CliError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            CliError::IoError(e) => write!(f, "IO error: {e}"),
+            CliError::JsonError(e) => write!(f, "JSON error: {e}"),
+            CliError::PostcardError(e) => write!(f, "Postcard error: {e}"),
+            CliError::ProcessError(msg) => write!(f, "Process error: {msg}"),
+            CliError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
             CliError::ShareDirExists => write!(f, "Share directory already exists"),
-            CliError::FileNotFound(path) => write!(f, "File not found: {}", path),
+            CliError::FileNotFound(path) => write!(f, "File not found: {path}"),
         }
     }
 }

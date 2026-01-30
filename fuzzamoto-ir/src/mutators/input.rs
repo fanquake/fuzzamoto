@@ -47,7 +47,7 @@ impl<R: RngCore> Mutator<R> for InputMutator {
             .get_variable(*candidate_input.1)
             .expect("Candiate variable has to exist");
 
-        if let Some(new_var) = builder.get_random_variable(rng, current_variable.var) {
+        if let Some(new_var) = builder.get_random_variable(rng, &current_variable.var) {
             if new_var.index == current_variable.index {
                 return Err(MutatorError::NoMutationsAvailable);
             }
@@ -63,7 +63,14 @@ impl<R: RngCore> Mutator<R> for InputMutator {
     }
 }
 
+impl Default for InputMutator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InputMutator {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }

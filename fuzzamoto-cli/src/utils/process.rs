@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 pub fn get_llvm_command(base: &str) -> String {
     match std::env::var("LLVM_V") {
-        Ok(version) => format!("{}-{}", base, version),
+        Ok(version) => format!("{base}-{version}"),
         Err(_) => base.to_string(),
     }
 }

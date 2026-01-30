@@ -38,7 +38,7 @@ impl Runner for LocalRunner {
     }
 
     fn fail(&self, message: &str) {
-        log::error!("{}", message);
+        log::error!("{message}");
     }
 
     fn skip(&self) {

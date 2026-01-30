@@ -81,7 +81,14 @@ pub struct CompiledMetadata {
     instructions: usize,
 }
 
+impl Default for CompiledMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompiledMetadata {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             block_tx_var_map: HashMap::new(),
@@ -93,6 +100,7 @@ impl CompiledMetadata {
     }
 
     // Get the block variable index and list of transaction variable indices for a given block hash
+    #[must_use]
     pub fn block_variables(
         &self,
         block_hash: &bitcoin::BlockHash,
@@ -103,15 +111,18 @@ impl CompiledMetadata {
     }
 
     // Get the list of instruction indices that correspond to actions in the compiled program
+    #[must_use]
     pub fn instruction_indices(&self) -> &[InstructionIndex] {
         &self.action_indices
     }
 
     // Get the list of instruction indices that correspond to variables in the compiled program
+    #[must_use]
     pub fn variable_indices(&self) -> &[InstructionIndex] {
         &self.variable_indices
     }
 
+    #[must_use]
     pub fn connection_map(&self) -> &HashMap<ConnectionId, VariableIndex> {
         &self.connection_map
     }
@@ -128,7 +139,7 @@ pub enum CompilerError {
 impl std::fmt::Display for CompilerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CompilerError::MiscError(e) => write!(f, "Misc error: {}", e),
+            CompilerError::MiscError(e) => write!(f, "Misc error: {e}"),
             CompilerError::IncorrectNumberOfInputs => write!(f, "Incorrect number of inputs"),
             CompilerError::VariableNotFound => write!(f, "Variable not found"),
             CompilerError::IncorrectVariableType => write!(f, "Incorrect variable type"),
@@ -264,6 +275,12 @@ struct AddrListV2 {
 
 struct Nop;
 
+impl Default for Compiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compiler {
     pub fn compile(&mut self, ir: &Program) -> CompilerResult {
         let probing_insts = ir
@@ -280,7 +297,7 @@ impl Compiler {
             ));
         }
 
-        for (_, instruction) in ir.instructions.iter().enumerate() {
+        for instruction in &ir.instructions {
             let actions_before = self
                 .output
                 .actions
@@ -313,24 +330,24 @@ impl Compiler {
                 | Operation::LoadFilterLoad { .. }
                 | Operation::LoadFilterAdd { .. }
                 | Operation::LoadNonce(..) => {
-                    self.handle_load_operations(&instruction)?;
+                    self.handle_load_operations(instruction);
                 }
                 Operation::TaprootScriptsUseAnnex | Operation::TaprootTxoUseAnnex => {
-                    self.handle_taproot_conversions(&instruction)?;
+                    self.handle_taproot_conversions(instruction)?;
                 }
                 Operation::BuildTaprootTree { .. } => {
-                    self.handle_build_taproot_tree(&instruction)?;
+                    self.handle_build_taproot_tree(instruction)?;
                 }
 
                 Operation::BuildCompactBlock => {
-                    self.handle_compact_block_building_operations(&instruction)?;
+                    self.handle_compact_block_building_operations(instruction)?;
                 }
 
                 Operation::BeginBlockTransactions
                 | Operation::AddTx
                 | Operation::EndBlockTransactions
                 | Operation::BuildBlock => {
-                    self.handle_block_building_operations(&instruction)?;
+                    self.handle_block_building_operations(instruction)?;
                 }
 
                 Operation::BeginBuildInventory
@@ -342,7 +359,7 @@ impl Compiler {
                 | Operation::AddBlockInv
                 | Operation::AddBlockWithWitnessInv
                 | Operation::AddFilteredBlockInv => {
-                    self.handle_inventory_operations(&instruction)?;
+                    self.handle_inventory_operations(instruction)?;
                 }
 
                 Operation::BeginBuildAddrList
@@ -351,13 +368,13 @@ impl Compiler {
                 | Operation::EndBuildAddrListV2
                 | Operation::AddAddr
                 | Operation::AddAddrV2 => {
-                    self.handle_addr_operations(&instruction)?;
+                    self.handle_addr_operations(instruction)?;
                 }
 
                 Operation::BeginWitnessStack
                 | Operation::AddWitness
                 | Operation::EndWitnessStack => {
-                    self.handle_witness_operations(&instruction)?;
+                    self.handle_witness_operations(instruction)?;
                 }
 
                 Operation::BuildPayToWitnessScriptHash
@@ -369,7 +386,7 @@ impl Compiler {
                 | Operation::BuildPayToPubKeyHash
                 | Operation::BuildPayToWitnessPubKeyHash
                 | Operation::BuildPayToTaproot => {
-                    self.handle_script_building_operations(&instruction)?;
+                    self.handle_script_building_operations(instruction)?;
                 }
 
                 Operation::BuildFilterAddFromTx
@@ -378,7 +395,7 @@ impl Compiler {
                 | Operation::AddTxoToFilter
                 | Operation::BeginBuildFilterLoad
                 | Operation::EndBuildFilterLoad => {
-                    self.handle_filter_building_operations(&instruction)?;
+                    self.handle_filter_building_operations(instruction)?;
                 }
 
                 Operation::BeginBuildTx
@@ -391,7 +408,7 @@ impl Compiler {
                 | Operation::AddTxOutput
                 | Operation::TakeTxo
                 | Operation::TakeCoinbaseTxo => {
-                    self.handle_transaction_building_operations(&instruction)?;
+                    self.handle_transaction_building_operations(instruction)?;
                 }
 
                 Operation::BeginBuildCoinbaseTx
@@ -400,17 +417,17 @@ impl Compiler {
                 | Operation::BeginBuildCoinbaseTxOutputs
                 | Operation::EndBuildCoinbaseTxOutputs
                 | Operation::AddCoinbaseTxOutput => {
-                    self.handle_coinbase_building_operations(&instruction)?;
+                    self.handle_coinbase_building_operations(instruction)?;
                 }
 
                 Operation::AdvanceTime | Operation::SetTime => {
-                    self.handle_time_operations(&instruction)?;
+                    self.handle_time_operations(instruction)?;
                 }
 
                 Operation::BeginBuildBlockTxn
                 | Operation::EndBuildBlockTxn
                 | Operation::AddTxToBlockTxn => {
-                    self.handle_bip152_blocktxn_operations(&instruction)?;
+                    self.handle_bip152_blocktxn_operations(instruction)?;
                 }
 
                 Operation::SendRawMessage
@@ -432,11 +449,11 @@ impl Compiler {
                 | Operation::SendFilterClear
                 | Operation::SendCompactBlock
                 | Operation::SendBlockTxn => {
-                    self.handle_message_sending_operations(&instruction)?;
+                    self.handle_message_sending_operations(instruction)?;
                 }
 
                 Operation::Probe => {
-                    self.handle_probe_operations(&instruction)?;
+                    self.handle_probe_operations(instruction);
                 }
             }
 
@@ -462,6 +479,7 @@ impl Compiler {
         Ok(self.output.clone()) // TODO: do not clone
     }
 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             // TODO: make this deterministic
@@ -569,7 +587,7 @@ impl Compiler {
             Operation::AddAddr => {
                 let record = self.get_input::<AddrRecord>(&instruction.inputs, 1)?;
                 let addr_tuple = match record {
-                    AddrRecord::V1 { .. } => self.addr_v1_to_network_address(record),
+                    AddrRecord::V1 { .. } => Compiler::addr_v1_to_network_address(record),
                     AddrRecord::V2 { .. } => {
                         return Err(CompilerError::MiscError(
                             "AddAddr expects an addr (v1) record".to_string(),
@@ -581,7 +599,7 @@ impl Compiler {
             }
             Operation::AddAddrV2 => {
                 let record = self.get_input::<AddrRecord>(&instruction.inputs, 1)?;
-                let entry = self.addr_v2_to_message(record)?;
+                let entry = Compiler::addr_v2_to_message(record)?;
                 let list = self.get_input_mut::<AddrListV2>(&instruction.inputs, 0)?;
                 list.entries.push(entry);
             }
@@ -598,7 +616,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn addr_v1_to_network_address(&self, record: &AddrRecord) -> (u32, Address) {
+    fn addr_v1_to_network_address(record: &AddrRecord) -> (u32, Address) {
         let (time, services, ip, port) = match record {
             AddrRecord::V1 {
                 time,
@@ -606,7 +624,7 @@ impl Compiler {
                 ip,
                 port,
             } => (*time, *services, *ip, *port),
-            _ => unreachable!("caller filtered non-V1 record"),
+            AddrRecord::V2 { .. } => unreachable!("caller filtered non-V1 record"),
         };
 
         let ipv6 = Ipv6Addr::from(ip);
@@ -615,11 +633,11 @@ impl Compiler {
         } else {
             SocketAddr::V6(SocketAddrV6::new(ipv6, port, 0, 0))
         };
-        let services = self.service_flags_from_bits(services);
+        let services = Compiler::service_flags_from_bits(services);
         (time, Address::new(&socket, services))
     }
 
-    fn addr_v2_to_message(&self, record: &AddrRecord) -> Result<AddrV2Message, CompilerError> {
+    fn addr_v2_to_message(record: &AddrRecord) -> Result<AddrV2Message, CompilerError> {
         let (time, services_bits, network, payload, port) = match record {
             AddrRecord::V2 {
                 time,
@@ -628,14 +646,14 @@ impl Compiler {
                 payload,
                 port,
             } => (*time, *services, network.clone(), payload.clone(), *port),
-            _ => {
+            AddrRecord::V1 { .. } => {
                 return Err(CompilerError::MiscError(
                     "AddAddrV2 expects an addr v2 record".to_string(),
                 ));
             }
         };
 
-        let services = self.service_flags_from_bits(services_bits);
+        let services = Compiler::service_flags_from_bits(services_bits);
 
         if matches!(network, AddrNetwork::TorV2) {
             return Err(CompilerError::MiscError(
@@ -697,7 +715,7 @@ impl Compiler {
         })
     }
 
-    fn service_flags_from_bits(&self, bits: u64) -> ServiceFlags {
+    fn service_flags_from_bits(bits: u64) -> ServiceFlags {
         let mut flags = ServiceFlags::NONE;
         for candidate in [
             ServiceFlags::NETWORK,
@@ -742,7 +760,7 @@ impl Compiler {
         instruction: &Instruction,
     ) -> Result<(), CompilerError> {
         match &instruction.operation {
-            Operation::BeginBuildFilterLoad => {
+            Operation::BeginBuildFilterLoad | Operation::EndBuildFilterLoad => {
                 let filter = self
                     .get_input::<FilterLoad>(&instruction.inputs, 0)?
                     .clone();
@@ -764,12 +782,6 @@ impl Compiler {
                 let mut_filter = self.get_input_mut::<FilterLoad>(&instruction.inputs, 0)?;
                 let n_hash_funcs = mut_filter.hash_funcs;
                 filter_insert(&mut mut_filter.filter, n_hash_funcs, &txo);
-            }
-            Operation::EndBuildFilterLoad => {
-                let filter = self
-                    .get_input::<FilterLoad>(&instruction.inputs, 0)?
-                    .clone();
-                self.append_variable(filter);
             }
             Operation::BuildFilterAddFromTx => {
                 let tx = self.get_input::<Tx>(&instruction.inputs, 0)?;
@@ -1029,7 +1041,7 @@ impl Compiler {
                 let mut script_sig_builder = ScriptBuf::builder().push_opcode(OP_0);
                 for elem in witness.stack.drain(..) {
                     script_sig_builder =
-                        script_sig_builder.push_slice(&PushBytesBuf::try_from(elem).unwrap());
+                        script_sig_builder.push_slice(PushBytesBuf::try_from(elem).unwrap());
                 }
 
                 let script_hash = ScriptBuf::from(script.clone()).script_hash();
@@ -1072,7 +1084,7 @@ impl Compiler {
                 let data = vec![0x41u8; *size_var];
                 let script = ScriptBuf::builder()
                     .push_opcode(OP_RETURN)
-                    .push_slice(&PushBytesBuf::try_from(data).unwrap());
+                    .push_slice(PushBytesBuf::try_from(data).unwrap());
 
                 self.append_variable(Scripts {
                     script_pubkey: script.into_bytes(),
@@ -1148,6 +1160,7 @@ impl Compiler {
         Ok(())
     }
 
+    #[expect(clippy::cast_possible_wrap)]
     fn handle_transaction_building_operations(
         &mut self,
         instruction: &Instruction,
@@ -1170,7 +1183,7 @@ impl Compiler {
                 });
             }
             Operation::EndBuildTx => {
-                self.finalize_tx(&instruction)?;
+                self.finalize_tx(instruction)?;
             }
             Operation::BeginBuildTxInputs => {
                 self.append_variable(TxInputs {
@@ -1183,7 +1196,7 @@ impl Compiler {
                 self.append_variable(tx_inputs_var.clone());
             }
             Operation::AddTxInput => {
-                self.add_tx_input(&instruction)?;
+                self.add_tx_input(instruction)?;
             }
             Operation::BeginBuildTxOutputs => {
                 let tx_inputs_var = self.get_input::<TxInputs>(&instruction.inputs, 0)?;
@@ -1201,7 +1214,7 @@ impl Compiler {
             }
             Operation::AddTxOutput => {
                 let scripts = self.get_input::<Scripts>(&instruction.inputs, 1)?.clone();
-                let amount = self.get_input::<u64>(&instruction.inputs, 2)?.clone();
+                let amount = *self.get_input::<u64>(&instruction.inputs, 2)?;
 
                 let mut_tx_outputs_var = self.get_input_mut::<TxOutputs>(&instruction.inputs, 0)?;
 
@@ -1227,6 +1240,7 @@ impl Compiler {
         Ok(())
     }
 
+    #[expect(clippy::cast_possible_wrap)]
     fn handle_coinbase_building_operations(
         &mut self,
         instruction: &Instruction,
@@ -1288,7 +1302,7 @@ impl Compiler {
                 tx_var.tx.output.push(witness_commitment_output);
 
                 let mut scripts_vec = Vec::new();
-                for output in tx_outputs_var.outputs.iter() {
+                for output in &tx_outputs_var.outputs {
                     scripts_vec.push(output.0.clone());
                 }
 
@@ -1298,7 +1312,7 @@ impl Compiler {
                 });
             }
             Operation::BuildCoinbaseTxInput => {
-                let sequence_var = self.get_input::<u32>(&instruction.inputs, 0)?.clone();
+                let sequence_var = *self.get_input::<u32>(&instruction.inputs, 0)?;
 
                 self.append_variable(CoinbaseInput {
                     sequence: sequence_var as usize,
@@ -1321,7 +1335,7 @@ impl Compiler {
             }
             Operation::AddCoinbaseTxOutput => {
                 let scripts = self.get_input::<Scripts>(&instruction.inputs, 1)?.clone();
-                let amount = self.get_input::<u64>(&instruction.inputs, 2)?.clone();
+                let amount = *self.get_input::<u64>(&instruction.inputs, 2)?;
 
                 let mut_tx_outputs_var = self.get_input_mut::<TxOutputs>(&instruction.inputs, 0)?;
 
@@ -1365,7 +1379,7 @@ impl Compiler {
 
                 let mut tx_var = tx_var.clone();
                 if matches!(instruction.operation, Operation::SendTxNoWit) {
-                    for input in tx_var.tx.input.iter_mut() {
+                    for input in &mut tx_var.tx.input {
                         input.witness.clear();
                     }
                 }
@@ -1423,8 +1437,8 @@ impl Compiler {
 
                 let mut block_var = block_var.clone();
                 if matches!(instruction.operation, Operation::SendBlockNoWit) {
-                    for tx in block_var.txdata.iter_mut() {
-                        for input in tx.input.iter_mut() {
+                    for tx in &mut block_var.txdata {
+                        for input in &mut tx.input {
                             input.witness.clear();
                         }
                     }
@@ -1457,7 +1471,7 @@ impl Compiler {
                             stop_hash: header_var.to_bitcoin_header().block_hash(),
                         },
                     );
-                };
+                }
             }
             Operation::SendGetCFCheckpt => {
                 let connection_var = self.get_input::<usize>(&instruction.inputs, 0)?;
@@ -1555,7 +1569,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn handle_load_operations(&mut self, instruction: &Instruction) -> Result<(), CompilerError> {
+    fn handle_load_operations(&mut self, instruction: &Instruction) {
         match &instruction.operation {
             Operation::Nop {
                 outputs,
@@ -1575,7 +1589,7 @@ impl Compiler {
                 self.handle_load_operation(*id);
             }
             Operation::LoadConnectionType(connection_type) => {
-                self.handle_load_operation(connection_type.clone())
+                self.handle_load_operation(connection_type.clone());
             }
             Operation::LoadDuration(duration) => self.handle_load_operation(*duration),
             Operation::LoadAddr(addr) => self.handle_load_operation(addr.clone()),
@@ -1587,14 +1601,14 @@ impl Compiler {
             Operation::LoadTime(time) => self.handle_load_operation(*time),
             Operation::LoadBlockHeight(height) => self.handle_load_operation(*height),
             Operation::LoadCompactFilterType(filter_type) => {
-                self.handle_load_operation(*filter_type)
+                self.handle_load_operation(*filter_type);
             }
             Operation::LoadMsgType(message_type) => self.handle_load_operation(*message_type),
             Operation::LoadBytes(bytes) => self.handle_load_operation(bytes.clone()),
             Operation::LoadSize(size) => self.handle_load_operation(*size),
             Operation::LoadPrivateKey(private_key) => self.handle_load_operation(*private_key),
             Operation::LoadSigHashFlags(sig_hash_flags) => {
-                self.handle_load_operation(*sig_hash_flags)
+                self.handle_load_operation(*sig_hash_flags);
             }
             Operation::LoadHeader {
                 prev,
@@ -1653,7 +1667,7 @@ impl Compiler {
                     filter: filter.clone(),
                     hash_funcs: *hash_funcs,
                     tweak: *tweak,
-                    flags: flags,
+                    flags,
                 });
             }
             Operation::LoadFilterAdd { data } => {
@@ -1665,7 +1679,6 @@ impl Compiler {
             }
             _ => unreachable!("Non-load operation passed to handle_load_operations"),
         }
-        Ok(())
     }
 
     fn handle_block_building_operations(
@@ -1693,7 +1706,7 @@ impl Compiler {
                 self.append_variable(block_transactions_var.clone());
             }
             Operation::BuildBlock => {
-                self.build_block(&instruction)?;
+                self.build_block(instruction)?;
             }
             _ => unreachable!(
                 "Non-block-building operation passed to handle_block_building_operations"
@@ -1718,18 +1731,16 @@ impl Compiler {
         Ok(())
     }
 
-    fn handle_probe_operations(&mut self, instruction: &Instruction) -> Result<(), CompilerError> {
+    fn handle_probe_operations(&mut self, instruction: &Instruction) {
         match &instruction.operation {
             Operation::Probe => {
                 self.emit_enable_logging_message();
             }
             _ => unreachable!("Non probing operation passed to handle_probe_operations"),
         }
-
-        Ok(())
     }
 
-    fn get_variable<'a, T: 'static>(&'a self, index: usize) -> Result<&'a T, CompilerError> {
+    fn get_variable<T: 'static>(&self, index: usize) -> Result<&T, CompilerError> {
         let var = self
             .variables
             .get(index)
@@ -1802,20 +1813,21 @@ impl Compiler {
         );
     }
 
+    #[expect(clippy::cast_possible_truncation)]
     fn build_block(&mut self, instruction: &Instruction) -> Result<(), CompilerError> {
         let mut coinbase_tx_var = self
             .get_input::<CoinbaseTx>(&instruction.inputs, 0)?
             .clone();
         let header_var = self.get_input::<Header>(&instruction.inputs, 1)?.clone();
-        let time_var = self.get_input::<u64>(&instruction.inputs, 2)?.clone();
-        let block_version_var = self.get_input::<i32>(&instruction.inputs, 3)?.clone();
+        let time_var = *self.get_input::<u64>(&instruction.inputs, 2)?;
+        let block_version_var = *self.get_input::<i32>(&instruction.inputs, 3)?;
         let block_transactions_var = self
             .get_input::<BlockTransactions>(&instruction.inputs, 4)?
             .clone();
 
         coinbase_tx_var.tx.tx.input[0].script_sig = ScriptBuf::builder()
-            .push_int((header_var.height + 1) as i64)
-            .push_int(0xFFFFFFFF)
+            .push_int(i64::from(header_var.height + 1))
+            .push_int(0xFFFF_FFFF)
             .as_script()
             .into();
 
@@ -1919,6 +1931,7 @@ impl Compiler {
         Ok(())
     }
 
+    #[expect(clippy::cast_possible_truncation)]
     fn finalize_tx(&mut self, instruction: &Instruction) -> Result<(), CompilerError> {
         let tx_inputs_var = self.get_input::<TxInputs>(&instruction.inputs, 1)?.clone();
         let tx_outputs_var = self.get_input::<TxOutputs>(&instruction.inputs, 2)?.clone();
@@ -1981,16 +1994,16 @@ impl Compiler {
                                 if let Ok(hash) = cache.legacy_signature_hash(
                                     idx,
                                     Script::from_bytes(&txo_var.scripts.script_pubkey),
-                                    sighash_flag as u32,
+                                    u32::from(sighash_flag),
                                 ) {
                                     let signature = ecdsa::Signature {
                                         signature: self.secp_ctx.sign_ecdsa(
                                             &secp256k1::Message::from_digest(*hash.as_byte_array()),
                                             &SecretKey::from_slice(private_key.as_slice()).unwrap(),
                                         ),
-                                        sighash_type: EcdsaSighashType::from_consensus(
-                                            sighash_flag as u32,
-                                        ),
+                                        sighash_type: EcdsaSighashType::from_consensus(u32::from(
+                                            sighash_flag,
+                                        )),
                                     };
 
                                     tx_var.tx.input[idx].script_sig.push_slice(
@@ -2000,7 +2013,7 @@ impl Compiler {
                             }
                             Operation::BuildPayToWitnessPubKeyHash => {
                                 let sighash_type =
-                                    EcdsaSighashType::from_consensus(sighash_flag as u32);
+                                    EcdsaSighashType::from_consensus(u32::from(sighash_flag));
                                 if let Ok(hash) = cache.p2wpkh_signature_hash(
                                     idx,
                                     Script::from_bytes(&txo_var.scripts.script_pubkey),
@@ -2060,7 +2073,7 @@ impl Compiler {
                                     ))
                                 })?;
                             let script = Script::from_bytes(&leaf.script);
-                            let leaf_hash = TapLeafHash::from_script(&script, leaf_version);
+                            let leaf_hash = TapLeafHash::from_script(script, leaf_version);
 
                             let secret_key =
                                 SecretKey::from_slice(spend_info.keypair.secret_key.as_slice())
@@ -2086,9 +2099,7 @@ impl Compiler {
                             if let Some(annex) = &annex_bytes {
                                 tx_var.tx.input[idx].witness.push(annex.clone());
                             }
-                            tx_var.tx.input[idx]
-                                .witness
-                                .push(signature.as_ref().to_vec());
+                            tx_var.tx.input[idx].witness.push(signature.as_ref());
                             tx_var.tx.input[idx].witness.push(leaf.script.clone());
                             tx_var.tx.input[idx].witness.push(build_control_block(
                                 &spend_info,
@@ -2124,9 +2135,7 @@ impl Compiler {
                         if let Some(annex) = &annex_bytes {
                             tx_var.tx.input[idx].witness.push(annex.clone());
                         }
-                        tx_var.tx.input[idx]
-                            .witness
-                            .push(signature.as_ref().to_vec());
+                        tx_var.tx.input[idx].witness.push(signature.as_ref());
                     }
                 }
             }
@@ -2173,8 +2182,8 @@ mod tests {
         };
 
         let mut builder = ProgramBuilder::new(context.clone());
-        let conn_var = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
-        builder.force_append(vec![conn_var.index], Operation::SendGetAddr);
+        let conn_var = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
+        builder.force_append(vec![conn_var.index], &Operation::SendGetAddr);
 
         let program = builder.finalize().unwrap();
 
@@ -2190,7 +2199,7 @@ mod tests {
                 assert_eq!(command, "getaddr");
                 assert!(payload.is_empty());
             }
-            other => panic!("unexpected action {:?}", other),
+            other => panic!("unexpected action {other:?}",),
         }
     }
 
@@ -2204,8 +2213,8 @@ mod tests {
 
         let mut builder = ProgramBuilder::new(context.clone());
 
-        let conn_var = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
-        let mut_list = builder.force_append_expect_output(vec![], Operation::BeginBuildAddrList);
+        let conn_var = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
+        let mut_list = builder.force_append_expect_output(vec![], &Operation::BeginBuildAddrList);
 
         let addr = AddrRecord::V1 {
             time: 42,
@@ -2215,11 +2224,11 @@ mod tests {
         };
 
         let addr_var =
-            builder.force_append_expect_output(vec![], Operation::LoadAddr(addr.clone()));
-        builder.force_append(vec![mut_list.index, addr_var.index], Operation::AddAddr);
+            builder.force_append_expect_output(vec![], &Operation::LoadAddr(addr.clone()));
+        builder.force_append(vec![mut_list.index, addr_var.index], &Operation::AddAddr);
         let addr_list =
-            builder.force_append_expect_output(vec![mut_list.index], Operation::EndBuildAddrList);
-        builder.force_append(vec![conn_var.index, addr_list.index], Operation::SendAddr);
+            builder.force_append_expect_output(vec![mut_list.index], &Operation::EndBuildAddrList);
+        builder.force_append(vec![conn_var.index, addr_list.index], &Operation::SendAddr);
 
         let program = builder.finalize().unwrap();
 
@@ -2234,14 +2243,14 @@ mod tests {
                 assert_eq!(*conn, 0);
                 assert_eq!(command, "addr");
 
-                let (time, services, ip, port) = match addr {
-                    AddrRecord::V1 {
-                        time,
-                        services,
-                        ip,
-                        port,
-                    } => (time, services, ip, port),
-                    _ => unreachable!(),
+                let AddrRecord::V1 {
+                    time,
+                    services,
+                    ip,
+                    port,
+                } = addr
+                else {
+                    unreachable!()
                 };
 
                 let compiled_address = {
@@ -2251,14 +2260,14 @@ mod tests {
                     } else {
                         SocketAddr::V6(SocketAddrV6::new(ipv6, port, 0, 0))
                     };
-                    let services_flags = compiler.service_flags_from_bits(services);
+                    let services_flags = Compiler::service_flags_from_bits(services);
                     (time, Address::new(&socket, services_flags))
                 };
 
                 let expected_bytes = bitcoin::consensus::encode::serialize(&vec![compiled_address]);
                 assert_eq!(*payload, expected_bytes);
             }
-            other => panic!("unexpected action {:?}", other),
+            other => panic!("unexpected action {other:?}"),
         }
     }
 
@@ -2272,8 +2281,8 @@ mod tests {
 
         let mut builder = ProgramBuilder::new(context.clone());
 
-        let conn_var = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
-        let mut_list = builder.force_append_expect_output(vec![], Operation::BeginBuildAddrListV2);
+        let conn_var = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
+        let mut_list = builder.force_append_expect_output(vec![], &Operation::BeginBuildAddrListV2);
 
         let addr = AddrRecord::V2 {
             time: 4242,
@@ -2284,11 +2293,14 @@ mod tests {
         };
 
         let addr_var =
-            builder.force_append_expect_output(vec![], Operation::LoadAddr(addr.clone()));
-        builder.force_append(vec![mut_list.index, addr_var.index], Operation::AddAddrV2);
-        let addr_list =
-            builder.force_append_expect_output(vec![mut_list.index], Operation::EndBuildAddrListV2);
-        builder.force_append(vec![conn_var.index, addr_list.index], Operation::SendAddrV2);
+            builder.force_append_expect_output(vec![], &Operation::LoadAddr(addr.clone()));
+        builder.force_append(vec![mut_list.index, addr_var.index], &Operation::AddAddrV2);
+        let addr_list = builder
+            .force_append_expect_output(vec![mut_list.index], &Operation::EndBuildAddrListV2);
+        builder.force_append(
+            vec![conn_var.index, addr_list.index],
+            &Operation::SendAddrV2,
+        );
 
         let program = builder.finalize().unwrap();
 
@@ -2305,7 +2317,7 @@ mod tests {
 
                 let expected_message = AddrV2Message {
                     time: 4242,
-                    services: compiler.service_flags_from_bits(
+                    services: Compiler::service_flags_from_bits(
                         (ServiceFlags::NETWORK | ServiceFlags::P2P_V2).to_u64(),
                     ),
                     addr: AddrV2::Ipv4(Ipv4Addr::new(192, 0, 2, 1)),
@@ -2315,7 +2327,7 @@ mod tests {
                 let expected_bytes = bitcoin::consensus::encode::serialize(&vec![expected_message]);
                 assert_eq!(*payload, expected_bytes);
             }
-            other => panic!("unexpected action {:?}", other),
+            other => panic!("unexpected action {other:?}"),
         }
     }
 
@@ -2333,18 +2345,18 @@ mod tests {
     #[test]
     fn compile_taproot_key_path_produces_expected_tx() {
         let mut builder = ProgramBuilder::new(test_context());
-        let connection = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
+        let connection = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
         let funding_txo = append_op_true_txo(&mut builder, [0x11; 32], 50_000);
         // Key-path only
         let spend_info = builder.force_append_expect_output(
             vec![],
-            Operation::BuildTaprootTree {
+            &Operation::BuildTaprootTree {
                 secret_key: [3u8; 32],
                 script_leaf: None,
             },
         );
         let scripts = builder
-            .force_append_expect_output(vec![spend_info.index], Operation::BuildPayToTaproot);
+            .force_append_expect_output(vec![spend_info.index], &Operation::BuildPayToTaproot);
 
         let parent_tx = build_single_output_tx_for_tests(
             &mut builder,
@@ -2353,11 +2365,11 @@ mod tests {
             50_000,
         );
         let produced =
-            builder.force_append_expect_output(vec![parent_tx.index], Operation::TakeTxo);
+            builder.force_append_expect_output(vec![parent_tx.index], &Operation::TakeTxo);
         let child_tx = build_single_input_transaction(&mut builder, produced.index, 49_500);
 
-        builder.force_append(vec![connection.index, parent_tx.index], Operation::SendTx);
-        builder.force_append(vec![connection.index, child_tx.index], Operation::SendTx);
+        builder.force_append(vec![connection.index, parent_tx.index], &Operation::SendTx);
+        builder.force_append(vec![connection.index, child_tx.index], &Operation::SendTx);
 
         let program = builder.finalize().expect("valid program");
         let tx = compiled_tx_at(&program, 1);
@@ -2368,13 +2380,13 @@ mod tests {
     #[test]
     fn compile_taproot_script_path_produces_expected_tx() {
         let mut builder = ProgramBuilder::new(test_context());
-        let connection = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
+        let connection = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
 
         let funding_txo = append_op_true_txo(&mut builder, [0x22; 32], 60_000);
         // Script-path: one leaf at depth 0
         let spend_info = builder.force_append_expect_output(
             vec![],
-            Operation::BuildTaprootTree {
+            &Operation::BuildTaprootTree {
                 secret_key: [5u8; 32],
                 script_leaf: Some(TaprootLeafSpec {
                     script: vec![OP_PUSHNUM_1.to_u8()],
@@ -2384,7 +2396,7 @@ mod tests {
             },
         );
         let scripts = builder
-            .force_append_expect_output(vec![spend_info.index], Operation::BuildPayToTaproot);
+            .force_append_expect_output(vec![spend_info.index], &Operation::BuildPayToTaproot);
 
         let parent_value = 60_000;
         let parent_tx = build_single_output_tx_for_tests(
@@ -2394,12 +2406,12 @@ mod tests {
             parent_value,
         );
         let produced =
-            builder.force_append_expect_output(vec![parent_tx.index], Operation::TakeTxo);
+            builder.force_append_expect_output(vec![parent_tx.index], &Operation::TakeTxo);
         let child_tx =
             build_single_input_transaction(&mut builder, produced.index, parent_value - 500);
 
-        builder.force_append(vec![connection.index, parent_tx.index], Operation::SendTx);
-        builder.force_append(vec![connection.index, child_tx.index], Operation::SendTx);
+        builder.force_append(vec![connection.index, parent_tx.index], &Operation::SendTx);
+        builder.force_append(vec![connection.index, child_tx.index], &Operation::SendTx);
 
         let program = builder.finalize().expect("valid program");
         let tx = compiled_tx_at(&program, 1);
@@ -2413,12 +2425,12 @@ mod tests {
         const HIDDEN_HASH: [u8; 32] = [0x42u8; 32];
 
         let mut builder = ProgramBuilder::new(test_context());
-        let connection = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
+        let connection = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
         let funding_txo = append_op_true_txo(&mut builder, [0x11; 32], 40_000);
         // Script-path with one hidden node sibling
         let spend_info = builder.force_append_expect_output(
             vec![],
-            Operation::BuildTaprootTree {
+            &Operation::BuildTaprootTree {
                 secret_key: [3u8; 32],
                 script_leaf: Some(TaprootLeafSpec {
                     script: vec![0x50],
@@ -2428,7 +2440,7 @@ mod tests {
             },
         );
         let pay_to_taproot = builder
-            .force_append_expect_output(vec![spend_info.index], Operation::BuildPayToTaproot);
+            .force_append_expect_output(vec![spend_info.index], &Operation::BuildPayToTaproot);
 
         let parent_tx = build_single_output_tx_for_tests(
             &mut builder,
@@ -2437,11 +2449,11 @@ mod tests {
             40_000,
         );
         let produced =
-            builder.force_append_expect_output(vec![parent_tx.index], Operation::TakeTxo);
+            builder.force_append_expect_output(vec![parent_tx.index], &Operation::TakeTxo);
         let child_tx = build_single_input_transaction(&mut builder, produced.index, 39_500);
 
-        builder.force_append(vec![connection.index, parent_tx.index], Operation::SendTx);
-        builder.force_append(vec![connection.index, child_tx.index], Operation::SendTx);
+        builder.force_append(vec![connection.index, parent_tx.index], &Operation::SendTx);
+        builder.force_append(vec![connection.index, child_tx.index], &Operation::SendTx);
 
         let program = builder.finalize().expect("valid tree program");
         let mut compiler = Compiler::new();
@@ -2449,7 +2461,7 @@ mod tests {
 
         let child_payload = match compiled.actions.get(1) {
             Some(CompiledAction::SendRawMessage(_, cmd, payload)) if cmd == "tx" => payload.clone(),
-            other => panic!("unexpected action {:?}", other),
+            other => panic!("unexpected action {other:?}"),
         };
         let child_tx = Transaction::consensus_decode(&mut child_payload.as_slice()).unwrap();
         assert_eq!(child_tx.input.len(), 1);
@@ -2467,18 +2479,18 @@ mod tests {
             timestamp: 0,
         });
 
-        let connection = builder.force_append_expect_output(vec![], Operation::LoadConnection(0));
+        let connection = builder.force_append_expect_output(vec![], &Operation::LoadConnection(0));
         let funding_txo = append_op_true_txo(&mut builder, [0x33; 32], 50_000);
         // Key-path only for annex test
         let spend_info = builder.force_append_expect_output(
             vec![],
-            Operation::BuildTaprootTree {
+            &Operation::BuildTaprootTree {
                 secret_key: [7u8; 32],
                 script_leaf: None,
             },
         );
         let scripts = builder
-            .force_append_expect_output(vec![spend_info.index], Operation::BuildPayToTaproot);
+            .force_append_expect_output(vec![spend_info.index], &Operation::BuildPayToTaproot);
 
         let parent_tx = build_single_output_tx_for_tests(
             &mut builder,
@@ -2487,17 +2499,17 @@ mod tests {
             50_000,
         );
         let produced =
-            builder.force_append_expect_output(vec![parent_tx.index], Operation::TakeTxo);
+            builder.force_append_expect_output(vec![parent_tx.index], &Operation::TakeTxo);
         let annex_var =
-            builder.force_append_expect_output(vec![], Operation::LoadTaprootAnnex { annex });
+            builder.force_append_expect_output(vec![], &Operation::LoadTaprootAnnex { annex });
         let spend_txo = builder.force_append_expect_output(
             vec![produced.index, annex_var.index],
-            Operation::TaprootTxoUseAnnex,
+            &Operation::TaprootTxoUseAnnex,
         );
 
         let tx = build_single_input_transaction(&mut builder, spend_txo.index, 49_500);
-        builder.force_append(vec![connection.index, parent_tx.index], Operation::SendTx);
-        builder.force_append(vec![connection.index, tx.index], Operation::SendTx);
+        builder.force_append(vec![connection.index, parent_tx.index], &Operation::SendTx);
+        builder.force_append(vec![connection.index, tx.index], &Operation::SendTx);
 
         builder.finalize().expect("valid program")
     }
@@ -2509,15 +2521,16 @@ mod tests {
             .actions
             .iter()
             .filter_map(|a| {
-                if let CompiledAction::SendRawMessage(_, cmd, payload) = a {
-                    if cmd == "tx" {
-                        return Some(payload.clone());
-                    }
+                if let CompiledAction::SendRawMessage(_, cmd, payload) = a
+                    && cmd == "tx"
+                {
+                    return Some(payload.clone());
                 }
+
                 None
             })
             .nth(send_tx_index)
-            .unwrap_or_else(|| panic!("missing tx at index {}", send_tx_index));
+            .unwrap_or_else(|| panic!("missing tx at index {send_tx_index}"));
         Transaction::consensus_decode(&mut bytes.as_slice()).expect("tx decode")
     }
 
@@ -2528,7 +2541,7 @@ mod tests {
     ) -> IndexedVariable {
         builder.force_append_expect_output(
             vec![],
-            Operation::LoadTxo {
+            &Operation::LoadTxo {
                 outpoint: (txid, 0),
                 value,
                 script_pubkey: vec![OP_TRUE.to_u8()],
@@ -2544,36 +2557,36 @@ mod tests {
         scripts_index: usize,
         amount: u64,
     ) -> crate::builder::IndexedVariable {
-        let tx_version = builder.force_append_expect_output(vec![], Operation::LoadTxVersion(2));
-        let lock_time = builder.force_append_expect_output(vec![], Operation::LoadLockTime(0));
+        let tx_version = builder.force_append_expect_output(vec![], &Operation::LoadTxVersion(2));
+        let lock_time = builder.force_append_expect_output(vec![], &Operation::LoadLockTime(0));
         let mut_tx = builder.force_append_expect_output(
             vec![tx_version.index, lock_time.index],
-            Operation::BeginBuildTx,
+            &Operation::BeginBuildTx,
         );
 
-        let mut_inputs = builder.force_append_expect_output(vec![], Operation::BeginBuildTxInputs);
+        let mut_inputs = builder.force_append_expect_output(vec![], &Operation::BeginBuildTxInputs);
         let sequence =
-            builder.force_append_expect_output(vec![], Operation::LoadSequence(0xffff_fffe));
+            builder.force_append_expect_output(vec![], &Operation::LoadSequence(0xffff_fffe));
         builder.force_append(
             vec![mut_inputs.index, funding_txo_index, sequence.index],
-            Operation::AddTxInput,
+            &Operation::AddTxInput,
         );
-        let const_inputs =
-            builder.force_append_expect_output(vec![mut_inputs.index], Operation::EndBuildTxInputs);
+        let const_inputs = builder
+            .force_append_expect_output(vec![mut_inputs.index], &Operation::EndBuildTxInputs);
 
         let mut_outputs = builder
-            .force_append_expect_output(vec![const_inputs.index], Operation::BeginBuildTxOutputs);
-        let amount_var = builder.force_append_expect_output(vec![], Operation::LoadAmount(amount));
+            .force_append_expect_output(vec![const_inputs.index], &Operation::BeginBuildTxOutputs);
+        let amount_var = builder.force_append_expect_output(vec![], &Operation::LoadAmount(amount));
         builder.force_append(
             vec![mut_outputs.index, scripts_index, amount_var.index],
-            Operation::AddTxOutput,
+            &Operation::AddTxOutput,
         );
         let const_outputs = builder
-            .force_append_expect_output(vec![mut_outputs.index], Operation::EndBuildTxOutputs);
+            .force_append_expect_output(vec![mut_outputs.index], &Operation::EndBuildTxOutputs);
 
         builder.force_append_expect_output(
             vec![mut_tx.index, const_inputs.index, const_outputs.index],
-            Operation::EndBuildTx,
+            &Operation::EndBuildTx,
         )
     }
 
@@ -2582,38 +2595,38 @@ mod tests {
         txo_index: usize,
         output_amount: u64,
     ) -> crate::builder::IndexedVariable {
-        let tx_version = builder.force_append_expect_output(vec![], Operation::LoadTxVersion(2));
-        let lock_time = builder.force_append_expect_output(vec![], Operation::LoadLockTime(0));
+        let tx_version = builder.force_append_expect_output(vec![], &Operation::LoadTxVersion(2));
+        let lock_time = builder.force_append_expect_output(vec![], &Operation::LoadLockTime(0));
         let mut_tx = builder.force_append_expect_output(
             vec![tx_version.index, lock_time.index],
-            Operation::BeginBuildTx,
+            &Operation::BeginBuildTx,
         );
 
-        let mut_inputs = builder.force_append_expect_output(vec![], Operation::BeginBuildTxInputs);
+        let mut_inputs = builder.force_append_expect_output(vec![], &Operation::BeginBuildTxInputs);
         let sequence =
-            builder.force_append_expect_output(vec![], Operation::LoadSequence(0xffff_fffe));
+            builder.force_append_expect_output(vec![], &Operation::LoadSequence(0xffff_fffe));
         builder.force_append(
             vec![mut_inputs.index, txo_index, sequence.index],
-            Operation::AddTxInput,
+            &Operation::AddTxInput,
         );
-        let const_inputs =
-            builder.force_append_expect_output(vec![mut_inputs.index], Operation::EndBuildTxInputs);
+        let const_inputs = builder
+            .force_append_expect_output(vec![mut_inputs.index], &Operation::EndBuildTxInputs);
 
         let mut_outputs = builder
-            .force_append_expect_output(vec![const_inputs.index], Operation::BeginBuildTxOutputs);
-        let scripts = builder.force_append_expect_output(vec![], Operation::BuildPayToAnchor);
+            .force_append_expect_output(vec![const_inputs.index], &Operation::BeginBuildTxOutputs);
+        let scripts = builder.force_append_expect_output(vec![], &Operation::BuildPayToAnchor);
         let amount =
-            builder.force_append_expect_output(vec![], Operation::LoadAmount(output_amount));
+            builder.force_append_expect_output(vec![], &Operation::LoadAmount(output_amount));
         builder.force_append(
             vec![mut_outputs.index, scripts.index, amount.index],
-            Operation::AddTxOutput,
+            &Operation::AddTxOutput,
         );
         let const_outputs = builder
-            .force_append_expect_output(vec![mut_outputs.index], Operation::EndBuildTxOutputs);
+            .force_append_expect_output(vec![mut_outputs.index], &Operation::EndBuildTxOutputs);
 
         builder.force_append_expect_output(
             vec![mut_tx.index, const_inputs.index, const_outputs.index],
-            Operation::EndBuildTx,
+            &Operation::EndBuildTx,
         )
     }
 
