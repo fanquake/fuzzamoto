@@ -1,6 +1,9 @@
 use crate::{AddrRecord, ProgramValidationError, Variable};
 
-use std::{fmt, time::Duration};
+use std::{
+    fmt::{self, Write},
+    time::Duration,
+};
 
 /// Configuration for a single spendable Taproot leaf in `BuildTaprootTree`.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Hash, PartialEq)]
@@ -199,20 +202,20 @@ impl fmt::Display for Operation {
             Operation::LoadBytes(bytes) => write!(
                 f,
                 "LoadBytes(\"{}\")",
-                bytes
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect::<String>()
+                bytes.iter().fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b:02X}");
+                    output
+                })
             ), // as hex
             Operation::LoadMsgType(msg_type) => write!(
                 f,
                 "LoadMsgType(\"{}\")",
-                msg_type.iter().map(|c| *c as char).collect::<String>()
+                msg_type.iter().copied().collect::<String>()
             ),
-            Operation::LoadNode(index) => write!(f, "LoadNode({})", index),
-            Operation::LoadConnection(index) => write!(f, "LoadConnection({})", index),
+            Operation::LoadNode(index) => write!(f, "LoadNode({index})"),
+            Operation::LoadConnection(index) => write!(f, "LoadConnection({index})"),
             Operation::LoadConnectionType(connection_type) => {
-                write!(f, "LoadConnectionType(\"{}\")", connection_type)
+                write!(f, "LoadConnectionType(\"{connection_type}\")")
             }
             Operation::LoadDuration(duration) => write!(f, "LoadDuration({})", duration.as_secs()),
             Operation::LoadAddr(addr) => match addr {
@@ -221,26 +224,22 @@ impl fmt::Display for Operation {
                     services,
                     port,
                     ..
-                } => write!(f, "LoadAddr({}, {}, {})", time, services, port),
+                } => write!(f, "LoadAddr({time}, {services}, {port})"),
                 AddrRecord::V2 {
                     time,
                     services,
                     network,
                     port,
                     ..
-                } => write!(
-                    f,
-                    "LoadAddrV2({}, {}, {}, {})",
-                    time, services, network, port
-                ),
+                } => write!(f, "LoadAddrV2({time}, {services}, {network}, {port})"),
             },
-            Operation::LoadBlockHeight(height) => write!(f, "LoadBlockHeight({})", height),
+            Operation::LoadBlockHeight(height) => write!(f, "LoadBlockHeight({height})"),
             Operation::LoadCompactFilterType(filter_type) => {
-                write!(f, "LoadCompactFilterType({})", filter_type)
+                write!(f, "LoadCompactFilterType({filter_type})")
             }
             Operation::SendRawMessage => write!(f, "SendRawMessage"),
             Operation::AdvanceTime => write!(f, "AdvanceTime"),
-            Operation::LoadTime(time) => write!(f, "LoadTime({})", time),
+            Operation::LoadTime(time) => write!(f, "LoadTime({time})"),
             Operation::SetTime => write!(f, "SetTime"),
             Operation::BuildRawScripts => write!(f, "BuildRawScripts"),
             Operation::BuildPayToWitnessScriptHash => write!(f, "BuildPayToWitnessScriptHash"),
@@ -263,9 +262,9 @@ impl fmt::Display for Operation {
                 hex_string(&outpoint.0),
                 outpoint.1,
                 value,
-                hex_string(&script_pubkey),
-                hex_string(&spending_script_sig),
-                hex_witness_stack(&spending_witness),
+                hex_string(script_pubkey),
+                hex_string(spending_script_sig),
+                hex_witness_stack(spending_witness),
             ),
             Operation::LoadTaprootAnnex { annex } => {
                 write!(f, "LoadTaprootAnnex({})", hex_string(annex))
@@ -289,17 +288,17 @@ impl fmt::Display for Operation {
                 version,
                 height
             ),
-            Operation::LoadAmount(amount) => write!(f, "LoadAmount({})", amount),
-            Operation::LoadTxVersion(version) => write!(f, "LoadTxVersion({})", version),
-            Operation::LoadBlockVersion(version) => write!(f, "LoadBlockVersion({})", version),
-            Operation::LoadLockTime(lock_time) => write!(f, "LoadLockTime({})", lock_time),
-            Operation::LoadSequence(sequence) => write!(f, "LoadSequence({})", sequence),
-            Operation::LoadSize(size) => write!(f, "LoadSize({})", size),
+            Operation::LoadAmount(amount) => write!(f, "LoadAmount({amount})"),
+            Operation::LoadTxVersion(version) => write!(f, "LoadTxVersion({version})"),
+            Operation::LoadBlockVersion(version) => write!(f, "LoadBlockVersion({version})"),
+            Operation::LoadLockTime(lock_time) => write!(f, "LoadLockTime({lock_time})"),
+            Operation::LoadSequence(sequence) => write!(f, "LoadSequence({sequence})"),
+            Operation::LoadSize(size) => write!(f, "LoadSize({size})"),
             Operation::LoadPrivateKey(private_key) => {
                 write!(f, "LoadPrivateKey({})", hex_string(private_key))
             }
             Operation::LoadSigHashFlags(sig_hash_flags) => {
-                write!(f, "LoadSigHashFlags({})", sig_hash_flags)
+                write!(f, "LoadSigHashFlags({sig_hash_flags})")
             }
             Operation::LoadFilterLoad {
                 filter,
@@ -320,7 +319,7 @@ impl fmt::Display for Operation {
                 write!(f, "LoadFilterAdd({})", hex_string(data))
             }
             Operation::LoadNonce(nonce) => {
-                write!(f, "LoadNonce({})", nonce)
+                write!(f, "LoadNonce({nonce})")
             }
             Operation::BeginBuildBlockTxn => write!(f, "BeginBuildBlockTxn"),
             Operation::AddTxToBlockTxn => write!(f, "AddTxToBlockTxn"),
@@ -420,10 +419,10 @@ impl fmt::Display for Operation {
 }
 
 fn hex_string(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>()
+    bytes.iter().fold(String::new(), |mut output, b| {
+        let _ = write!(output, "{b:02X}");
+        output
+    })
 }
 
 fn hex_witness_stack(witness: &[Vec<u8>]) -> String {
@@ -431,24 +430,25 @@ fn hex_witness_stack(witness: &[Vec<u8>]) -> String {
 }
 
 impl Operation {
+    #[must_use]
     pub fn mutates_nth_input(&self, index: usize) -> bool {
-        match self {
-            Operation::AddTxInput if index == 0 => true,
-            Operation::AddTxOutput if index == 0 => true,
-            Operation::AddCoinbaseTxOutput if index == 0 => true,
-            Operation::TakeTxo if index == 0 => true,
-            Operation::TakeCoinbaseTxo if index == 0 => true,
-            Operation::AddWitness if index == 0 => true,
-            Operation::AddTxidInv if index == 0 => true,
-            Operation::AddTxidWithWitnessInv if index == 0 => true,
-            Operation::AddWtxidInv if index == 0 => true,
-            Operation::AddTx if index == 0 => true,
-            Operation::AddAddr if index == 0 => true,
-            Operation::AddAddrV2 if index == 0 => true,
-            _ => false,
-        }
+        matches!(self,
+            Operation::AddTxInput
+            | Operation::AddTxOutput
+            | Operation::AddCoinbaseTxOutput
+            | Operation::TakeTxo
+            | Operation::TakeCoinbaseTxo
+            | Operation::AddWitness
+            | Operation::AddTxidInv
+            | Operation::AddTxidWithWitnessInv
+            | Operation::AddWtxidInv
+            | Operation::AddTx
+            | Operation::AddAddr
+            | Operation::AddAddrV2
+                if index == 0)
     }
 
+    #[must_use]
     pub fn is_block_begin(&self) -> bool {
         match self {
             Operation::BeginBuildTx
@@ -562,6 +562,7 @@ impl Operation {
         }
     }
 
+    #[must_use]
     pub fn allow_insertion_in_block(&self) -> bool {
         if self.is_block_begin() {
             return false;
@@ -569,24 +570,41 @@ impl Operation {
         true
     }
 
+    #[must_use]
     pub fn is_matching_block_begin(&self, other: &Operation) -> bool {
-        match (other, self) {
+        matches!(
+            (other, self),
             (Operation::BeginBuildTx, Operation::EndBuildTx)
-            | (Operation::BeginBuildTxInputs, Operation::EndBuildTxInputs)
-            | (Operation::BeginBuildTxOutputs, Operation::EndBuildTxOutputs)
-            | (Operation::BeginBuildInventory, Operation::EndBuildInventory)
-            | (Operation::BeginBuildAddrList, Operation::EndBuildAddrList)
-            | (Operation::BeginBuildAddrListV2, Operation::EndBuildAddrListV2)
-            | (Operation::BeginWitnessStack, Operation::EndWitnessStack)
-            | (Operation::BeginBlockTransactions, Operation::EndBlockTransactions)
-            | (Operation::BeginBuildFilterLoad, Operation::EndBuildFilterLoad)
-            | (Operation::BeginBuildCoinbaseTx, Operation::EndBuildCoinbaseTx)
-            | (Operation::BeginBuildCoinbaseTxOutputs, Operation::EndBuildCoinbaseTxOutputs)
-            | (Operation::BeginBuildBlockTxn, Operation::EndBuildBlockTxn) => true,
-            _ => false,
-        }
+                | (Operation::BeginBuildTxInputs, Operation::EndBuildTxInputs)
+                | (Operation::BeginBuildTxOutputs, Operation::EndBuildTxOutputs)
+                | (Operation::BeginBuildInventory, Operation::EndBuildInventory)
+                | (Operation::BeginBuildAddrList, Operation::EndBuildAddrList)
+                | (
+                    Operation::BeginBuildAddrListV2,
+                    Operation::EndBuildAddrListV2
+                )
+                | (Operation::BeginWitnessStack, Operation::EndWitnessStack)
+                | (
+                    Operation::BeginBlockTransactions,
+                    Operation::EndBlockTransactions
+                )
+                | (
+                    Operation::BeginBuildFilterLoad,
+                    Operation::EndBuildFilterLoad
+                )
+                | (
+                    Operation::BeginBuildCoinbaseTx,
+                    Operation::EndBuildCoinbaseTx
+                )
+                | (
+                    Operation::BeginBuildCoinbaseTxOutputs,
+                    Operation::EndBuildCoinbaseTxOutputs
+                )
+                | (Operation::BeginBuildBlockTxn, Operation::EndBuildBlockTxn)
+        )
     }
 
+    #[must_use]
     pub fn is_block_end(&self) -> bool {
         match self {
             Operation::EndBuildTx
@@ -700,14 +718,17 @@ impl Operation {
         }
     }
 
+    #[must_use]
     pub fn num_inner_outputs(&self) -> usize {
         self.get_inner_output_variables().len()
     }
 
+    #[must_use]
     pub fn num_outputs(&self) -> usize {
         self.get_output_variables().len()
     }
 
+    #[must_use]
     pub fn num_inputs(&self) -> usize {
         self.get_input_variables().len()
     }
@@ -738,6 +759,8 @@ impl Operation {
         check_expected(variables, &expected_variables)
     }
 
+    #[must_use]
+    #[expect(clippy::match_same_arms)]
     pub fn get_output_variables(&self) -> Vec<Variable> {
         match self {
             Operation::LoadBytes(_) => vec![Variable::Bytes],
@@ -864,6 +887,8 @@ impl Operation {
         }
     }
 
+    #[must_use]
+    #[expect(clippy::match_same_arms)]
     pub fn get_input_variables(&self) -> Vec<Variable> {
         match self {
             Operation::SendRawMessage => {
@@ -1034,6 +1059,8 @@ impl Operation {
         }
     }
 
+    #[must_use]
+    #[expect(clippy::match_same_arms)]
     pub fn get_inner_output_variables(&self) -> Vec<Variable> {
         match self {
             Operation::BeginBuildTx => vec![Variable::MutTx],

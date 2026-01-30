@@ -12,6 +12,7 @@ pub struct AdvanceTimeGenerator {
 }
 
 impl AdvanceTimeGenerator {
+    #[must_use]
     pub fn new(allowed_time_deltas: Option<Vec<u64>>) -> Self {
         Self {
             allowed_time_deltas,
@@ -36,7 +37,7 @@ impl<R: RngCore> Generator<R> for AdvanceTimeGenerator {
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
         // Find the most recent time variable or load the timestamp from the context
-        let time_var = match builder.get_nearest_variable(Variable::Time) {
+        let time_var = match builder.get_nearest_variable(&Variable::Time) {
             Some(v) => v,
             None => builder
                 .append(Instruction {

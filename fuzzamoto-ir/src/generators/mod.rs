@@ -68,6 +68,6 @@ pub trait Generator<R: RngCore> {
         rng: &mut R,
         _meta: Option<&PerTestcaseMetadata>,
     ) -> Option<usize> {
-        program.get_random_instruction_index(rng, self.requested_context())
+        program.get_random_instruction_index(rng, &self.requested_context())
     }
 }

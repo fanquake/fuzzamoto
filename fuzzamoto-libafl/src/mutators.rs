@@ -47,10 +47,9 @@ pub fn runtime_metadata_mut<S>(state: &mut S) -> &mut RuntimeMetadata
 where
     S: HasMetadata,
 {
-    let rt_data = state
+    (state
         .metadata_mut::<RuntimeMetadata>()
-        .expect("RuntimeMetadata should always exist at this point");
-    rt_data
+        .expect("RuntimeMetadata should always exist at this point")) as _
 }
 
 impl<S, M, R> Mutator<IrInput, S> for IrMutator<M, R>
@@ -60,7 +59,7 @@ where
     M: fuzzamoto_ir::Mutator<R>,
 {
     fn mutate(&mut self, state: &mut S, input: &mut IrInput) -> Result<MutationResult, Error> {
-        let current_id = state.corpus().current().clone();
+        let current_id = *state.corpus().current();
 
         let rt_data = runtime_metadata_mut(state);
         let is_first = rt_data.mutation_idx() == 0;
@@ -80,7 +79,7 @@ where
                 .mutator
                 .mutate(input.ir_mut(), &mut self.rng, tc_data.as_deref())
             {
-                Ok(_) => MutationResult::Mutated,
+                Ok(()) => MutationResult::Mutated,
                 _ => MutationResult::Skipped,
             },
         )
@@ -210,7 +209,7 @@ where
     G: fuzzamoto_ir::Generator<R>,
 {
     fn mutate(&mut self, state: &mut S, input: &mut IrInput) -> Result<MutationResult, Error> {
-        let current_id = state.corpus().current().clone();
+        let current_id = *state.corpus().current();
 
         let rt_data = runtime_metadata_mut(state);
         let is_first = rt_data.mutation_idx() == 0;
@@ -252,7 +251,7 @@ where
             input.ir().context.clone(),
             input.ir().instructions[index..].to_vec(),
         );
-        let Ok(_) = builder.append_program(
+        let Ok(()) = builder.append_program(
             second_half,
             prev_var_count,
             builder.variable_count() - prev_var_count,

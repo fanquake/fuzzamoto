@@ -16,7 +16,9 @@ use libafl::{
 use libafl_bolts::{impl_serdeany, tuples::Handle};
 use std::collections::{HashMap, HashSet};
 
+use base64::prelude::{BASE64_STANDARD, Engine};
 use serde::{Deserialize, Serialize};
+
 pub struct ProbingStage<T> {
     seen: HashSet<CorpusId>,
     handle: Handle<T>,
@@ -76,11 +78,7 @@ where
                 }
             }
             ProbeResult::Failure { command, reason } => {
-                log::info!(
-                    "Command {:?} couln't be parsed; reason: {:?}",
-                    command,
-                    reason
-                );
+                log::info!("Command {command:?} couln't be parsed; reason: {reason:?}");
             }
             ProbeResult::RecentBlockes { result } => {
                 let current = *state.corpus().current();
@@ -88,7 +86,7 @@ where
                     && let Ok(meta) = state.metadata_mut::<RuntimeMetadata>()
                 {
                     let txvec = meta.metadatas.entry(cur).or_default();
-                    txvec.add_recent_blocks(result.clone())
+                    txvec.add_recent_blocks(result.clone());
                 }
             }
         }
@@ -163,17 +161,13 @@ where
             .as_ref()
             .ok_or(libafl::Error::illegal_state("StdOutObserver has no stdout"))?;
         if !buffer.is_empty() {
-            let chunks: Vec<Vec<u8>> = buffer
-                .split(|b| *b == b'\n')
-                .map(|slice| slice.to_vec())
-                .collect();
+            let chunks: Vec<Vec<u8>> = buffer.split(|b| *b == b'\n').map(<[u8]>::to_vec).collect();
 
             for chunk in chunks {
                 if chunk.is_empty() {
                     continue;
                 }
 
-                use base64::prelude::{BASE64_STANDARD, Engine};
                 if let Ok(decoded) = BASE64_STANDARD.decode(&chunk)
                     && let Ok(results) = postcard::from_bytes::<ProbeResults>(&decoded)
                 {
@@ -185,7 +179,7 @@ where
         }
 
         post.post_exec(state, None)?;
-        log::info!("Done Probing for testcase {:?}", cur);
+        log::info!("Done Probing for testcase {cur:?}");
         self.seen.insert(cur);
         Ok(())
     }

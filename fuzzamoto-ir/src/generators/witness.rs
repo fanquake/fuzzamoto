@@ -9,7 +9,14 @@ use super::{GeneratorError, GeneratorResult};
 /// `WitnessGenerator` generates a new `AddWitness` instruction into a witness stack context
 pub struct WitnessGenerator;
 
+impl Default for WitnessGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WitnessGenerator {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
@@ -22,7 +29,7 @@ impl<R: RngCore> Generator<R> for WitnessGenerator {
         rng: &mut R,
         _meta: Option<&PerTestcaseMetadata>,
     ) -> GeneratorResult {
-        let Some(witness_var) = builder.get_nearest_variable(Variable::MutWitnessStack) else {
+        let Some(witness_var) = builder.get_nearest_variable(&Variable::MutWitnessStack) else {
             return Err(GeneratorError::MissingVariables);
         };
 
@@ -34,11 +41,11 @@ impl<R: RngCore> Generator<R> for WitnessGenerator {
         }
         rng.fill_bytes(&mut bytes);
 
-        let script_var = builder.force_append_expect_output(vec![], Operation::LoadBytes(bytes));
+        let script_var = builder.force_append_expect_output(vec![], &Operation::LoadBytes(bytes));
 
         builder.force_append(
             vec![witness_var.index, script_var.index],
-            Operation::AddWitness,
+            &Operation::AddWitness,
         );
 
         Ok(())

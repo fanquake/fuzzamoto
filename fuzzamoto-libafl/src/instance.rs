@@ -91,10 +91,7 @@ where
     MT: NamedTuple,
 {
     let names = mutations.names();
-    let map: BTreeMap<Cow<'_, str>, f32> = names
-        .into_iter()
-        .zip(weights.into_iter().copied())
-        .collect();
+    let map: BTreeMap<Cow<'_, str>, f32> = names.into_iter().zip(weights.iter().copied()).collect();
 
     let config_path = options.output_dir(id).join("config.json");
     let file = std::fs::File::create(config_path)?;
@@ -120,13 +117,13 @@ where
             .first()
             .expect("unable to get first core id");
 
-        let timeout = Duration::from_millis(self.options.timeout as u64);
+        let timeout = Duration::from_millis(u64::from(self.options.timeout));
         let settings = NyxSettings::builder()
             .cpu_id(self.client_description.core_id().0)
             .parent_cpu_id(Some(parent_cpu_id.0))
             .input_buffer_size(self.options.buffer_size)
             .aux_buffer_size(AUX_BUFFER_SIZE)
-            .timeout_secs(timeout.as_secs() as u8)
+            .timeout_secs(u8::try_from(timeout.as_secs())?)
             .timeout_micro_secs(timeout.subsec_micros())
             .workdir_path(Cow::from(
                 self.options.work_dir().to_str().unwrap().to_string(),
@@ -191,7 +188,7 @@ where
             |_, _, _, _| Ok(!self.options.ignore_hangs),
             tuple_list!(VerifyTimeoutsStage::new(
                 enable_capture_timeouts,
-                Duration::from_millis(self.options.timeout as u64),
+                Duration::from_millis(u64::from(self.options.timeout)),
                 self.options.hang_multiple,
             )),
         );
@@ -273,7 +270,7 @@ where
                     &input,
                 )
                 .expect("Error running target");
-            println!("Rerun finished with ExitKind {:?}", exit_kind);
+            println!("Rerun finished with ExitKind {exit_kind:?}");
             // We're done :)
             process::exit(0);
         }
@@ -320,7 +317,7 @@ where
             (
                 100.0,
                 IrGenerator::new(
-                    TipBlockGenerator::new(full_program_context.headers.clone()),
+                    TipBlockGenerator::new(&full_program_context.headers),
                     rng.clone()
                 )
             ),
@@ -343,21 +340,12 @@ where
                 40.0,
                 IrGenerator::new(SendMessageGenerator::default(), rng.clone())
             ),
+            (50.0, IrGenerator::new(SingleTxGenerator, rng.clone())),
+            (50.0, IrGenerator::new(LongChainGenerator, rng.clone())),
+            (50.0, IrGenerator::new(LargeTxGenerator, rng.clone())),
             (
                 50.0,
-                IrGenerator::new(SingleTxGenerator::default(), rng.clone())
-            ),
-            (
-                50.0,
-                IrGenerator::new(LongChainGenerator::default(), rng.clone())
-            ),
-            (
-                50.0,
-                IrGenerator::new(LargeTxGenerator::default(), rng.clone())
-            ),
-            (
-                50.0,
-                IrGenerator::new(OneParentOneChildGenerator::default(), rng.clone())
+                IrGenerator::new(OneParentOneChildGenerator, rng.clone())
             ),
             (
                 20.0,
@@ -404,17 +392,11 @@ where
                 IrGenerator::new(AddrRelayV2Generator::default(), rng.clone())
             ),
             (10.0, IrGenerator::new(GetAddrGenerator, rng.clone())),
-            (
-                200.0,
-                IrGenerator::new(CompactBlockGenerator::default(), rng.clone())
-            ),
-            (
-                200.0,
-                IrGenerator::new(BlockTxnGenerator::default(), rng.clone())
-            ),
+            (200.0, IrGenerator::new(CompactBlockGenerator, rng.clone())),
+            (200.0, IrGenerator::new(BlockTxnGenerator, rng.clone())),
         ];
         log_weights(
-            &self.options,
+            self.options,
             self.client_description.core_id(),
             &mutations,
             &weights,
@@ -529,7 +511,7 @@ where
                 let disabled_corpus_ids: Vec<CorpusId> = (0..corpus.count_disabled())
                     .map(|idx| corpus.nth_from_all(idx + corpus.count()))
                     .collect();
-                for id in disabled_corpus_ids.iter() {
+                for id in &disabled_corpus_ids {
                     let _ = corpus.remove(*id);
                 }
                 println!(

@@ -48,6 +48,7 @@ pub struct ProgramBuilder {
 }
 
 impl ProgramBuilder {
+    #[must_use]
     pub fn new(context: ProgramContext) -> Self {
         let mut builder = Self {
             context,
@@ -60,7 +61,7 @@ impl ProgramBuilder {
         };
 
         // Enter outer/global scope of the program (never exited)
-        builder.enter_scope(None, InstructionContext::Global);
+        builder.enter_scope(None, &InstructionContext::Global);
 
         builder
     }
@@ -73,10 +74,12 @@ impl ProgramBuilder {
         Ok(builder)
     }
 
+    #[must_use]
     pub fn context(&self) -> &ProgramContext {
         &self.context
     }
 
+    #[must_use]
     pub fn variable_count(&self) -> usize {
         self.variables.len()
     }
@@ -89,7 +92,7 @@ impl ProgramBuilder {
         self.active_scopes_set.contains(&scope_id)
     }
 
-    fn enter_scope(&mut self, begin: Option<usize>, context: InstructionContext) {
+    fn enter_scope(&mut self, begin: Option<usize>, context: &InstructionContext) {
         self.scope_counter += 1;
         self.active_scopes.push(Scope {
             begin,
@@ -214,7 +217,7 @@ impl ProgramBuilder {
             self.enter_scope(
                 Some(self.instructions.len()),
                 // Unwrap as this is guaranteed to be a block beginning
-                instruction.entered_context_after_execution().unwrap(),
+                &instruction.entered_context_after_execution().unwrap(),
             );
         }
 
@@ -247,13 +250,13 @@ impl ProgramBuilder {
     }
 
     /// Append a sequence of instructions
-    pub fn append_all<'a>(
+    pub fn append_all(
         &mut self,
         instructions: impl Iterator<Item = Instruction>,
     ) -> Result<Vec<IndexedVariable>, ProgramValidationError> {
         let mut variables = Vec::new();
         for instruction in instructions {
-            variables.extend(self.append(instruction)?.drain(..));
+            variables.append(&mut self.append(instruction)?);
         }
 
         // return all variables that are still in scope after appending the instructions
@@ -300,26 +303,25 @@ impl ProgramBuilder {
     pub fn force_append(
         &mut self,
         inputs: Vec<usize>,
-        operation: Operation,
+        operation: &Operation,
     ) -> Vec<IndexedVariable> {
         self.append(Instruction {
             inputs,
             operation: operation.clone(),
         })
-        .expect(&format!("Force append should not fail for {:?}", operation))
+        .unwrap_or_else(|_| panic!("Force append should not fail for {operation:?}"))
     }
 
     pub fn force_append_expect_output(
         &mut self,
         inputs: Vec<usize>,
-        operation: Operation,
+        operation: &Operation,
     ) -> IndexedVariable {
-        self.force_append(inputs, operation.clone())
+        self.force_append(inputs, operation)
             .pop()
-            .expect(&format!(
-                "One new output var should have been created for {:?}",
-                operation
-            ))
+            .unwrap_or_else(|| {
+                panic!("One new output var should have been created for {operation:?}")
+            })
     }
 
     /// Construct a `Program` from the builder
@@ -339,6 +341,7 @@ impl ProgramBuilder {
         ))
     }
 
+    #[must_use]
     pub fn get_variable(&self, index: usize) -> Option<IndexedVariable> {
         let scoped_variable = self.variables.get(index)?;
         if self.is_scope_active(scoped_variable.scope_id) {
@@ -353,9 +356,10 @@ impl ProgramBuilder {
 
     /// Get the nearest (searched in reverse) available (in the current scope) variable of a given
     /// type
+    #[must_use]
     pub fn get_nearest_sent_header(&self) -> Option<IndexedVariable> {
         let mut sent_headers = HashSet::new();
-        for instr in self.instructions.iter() {
+        for instr in &self.instructions {
             if matches!(instr.operation, Operation::SendHeader) {
                 assert!(matches!(
                     self.variables[instr.inputs[1]].var,
@@ -388,17 +392,18 @@ impl ProgramBuilder {
                     index,
                 },
             )
-            .last()
+            .next_back()
     }
 
     /// Get the nearest (searched in reverse) available (in the current scope) variable of a given
     /// type
-    pub fn get_nearest_variable(&self, find: Variable) -> Option<IndexedVariable> {
+    #[must_use]
+    pub fn get_nearest_variable(&self, find: &Variable) -> Option<IndexedVariable> {
         self.variables
             .iter()
             .enumerate()
             .filter(|(_, ScopedVariable { var, scope_id })| {
-                self.is_scope_active(*scope_id) && *var == find
+                self.is_scope_active(*scope_id) && *var == *find
             })
             .map(
                 |(index, ScopedVariable { var, scope_id: _ })| IndexedVariable {
@@ -406,15 +411,15 @@ impl ProgramBuilder {
                     index,
                 },
             )
-            .last()
+            .next_back()
     }
 
     pub fn get_or_create_random_connection<R: RngCore>(&mut self, rng: &mut R) -> IndexedVariable {
-        match self.get_random_variable(rng, Variable::Connection) {
+        match self.get_random_variable(rng, &Variable::Connection) {
             Some(v) => v,
             None => self.force_append_expect_output(
                 vec![],
-                Operation::LoadConnection(rng.gen_range(0..self.context.num_connections)),
+                &Operation::LoadConnection(rng.gen_range(0..self.context.num_connections)),
             ),
         }
     }
@@ -423,13 +428,13 @@ impl ProgramBuilder {
     pub fn get_random_variable<R: RngCore>(
         &self,
         rng: &mut R,
-        find: Variable,
+        find: &Variable,
     ) -> Option<IndexedVariable> {
         self.variables
             .iter()
             .enumerate()
             .filter(|(_, ScopedVariable { var, scope_id })| {
-                self.is_scope_active(*scope_id) && *var == find
+                self.is_scope_active(*scope_id) && *var == *find
             })
             .map(
                 |(index, ScopedVariable { var, scope_id: _ })| IndexedVariable {
@@ -444,14 +449,14 @@ impl ProgramBuilder {
     pub fn get_random_variables<R: RngCore>(
         &self,
         rng: &mut R,
-        find: Variable,
+        find: &Variable,
     ) -> Vec<IndexedVariable> {
         let available = self
             .variables
             .iter()
             .enumerate()
             .filter(|(_, ScopedVariable { var, scope_id })| {
-                self.is_scope_active(*scope_id) && *var == find
+                self.is_scope_active(*scope_id) && *var == *find
             })
             .map(
                 |(index, ScopedVariable { var, scope_id: _ })| IndexedVariable {
@@ -473,7 +478,7 @@ impl ProgramBuilder {
         let mut utxos = HashSet::new();
 
         let mut var_count = 0;
-        for instruction in self.instructions.iter() {
+        for instruction in &self.instructions {
             match instruction.operation {
                 Operation::TakeTxo | Operation::LoadTxo { .. } => {
                     utxos.insert(var_count);

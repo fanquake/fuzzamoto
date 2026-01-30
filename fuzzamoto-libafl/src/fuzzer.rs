@@ -53,7 +53,7 @@ impl Fuzzer {
             let log_fn = {
                 let log = log.clone();
                 move |s: &str| {
-                    println!("{}", s);
+                    println!("{s}");
 
                     if let Some(log) = &log {
                         writeln!(log.borrow_mut(), "{:?} {}", current_time(), s).unwrap();

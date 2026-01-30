@@ -72,7 +72,7 @@ impl<R: RngCore> Generator<R> for BlockTxnGenerator {
             let connection_var = builder.get_or_create_random_connection(rng);
 
             // choose a block upon which we build the blocktxn
-            let Some(block) = builder.get_random_variable(rng, Variable::Block) else {
+            let Some(block) = builder.get_random_variable(rng, &Variable::Block) else {
                 return Err(GeneratorError::MissingVariables);
             };
 
@@ -85,7 +85,7 @@ impl<R: RngCore> Generator<R> for BlockTxnGenerator {
                 .pop()
                 .expect("BeginBuildBlockTxn should always produce a var");
 
-            let Some(tx) = builder.get_random_variable(rng, Variable::ConstTx) else {
+            let Some(tx) = builder.get_random_variable(rng, &Variable::ConstTx) else {
                 return Err(GeneratorError::MissingVariables);
             };
             builder
@@ -134,12 +134,13 @@ impl<R: RngCore> Generator<R> for BlockTxnGenerator {
             Some(insertion_point)
         } else {
             program
-                .get_random_instruction_index(rng, <Self as Generator<R>>::requested_context(self))
+                .get_random_instruction_index(rng, &<Self as Generator<R>>::requested_context(self))
         }
     }
 }
 
 impl BlockTxnGenerator {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }

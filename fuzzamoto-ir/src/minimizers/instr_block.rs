@@ -42,15 +42,14 @@ impl Iterator for InstrBlockMinimizer {
                 continue;
             }
 
-            if let Some(block_end) = found_block_end.as_ref() {
-                if self.current.instructions[*block_end]
+            if let Some(block_end) = found_block_end.as_ref()
+                && self.current.instructions[*block_end]
                     .operation
                     .is_matching_block_begin(&self.current.instructions[i].operation)
-                {
-                    found_block_begin = Some(i);
-                    self.current_index = i;
-                    break;
-                }
+            {
+                found_block_begin = Some(i);
+                self.current_index = i;
+                break;
             }
         }
 

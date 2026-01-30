@@ -10,6 +10,7 @@ pub struct PerTestcaseMetadata {
 }
 
 impl PerTestcaseMetadata {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             block_txn_request: Vec::new(),
@@ -17,10 +18,12 @@ impl PerTestcaseMetadata {
         }
     }
 
+    #[must_use]
     pub fn block_txn_request(&self) -> &[GetBlockTxn] {
         &self.block_txn_request
     }
 
+    #[must_use]
     pub fn recent_blocks(&self) -> &[RecentBlock] {
         &self.recent_blocks
     }

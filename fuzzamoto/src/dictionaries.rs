@@ -11,6 +11,7 @@ pub struct FileDictionary {
 }
 
 impl FileDictionary {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             words: BTreeSet::new(),
@@ -18,12 +19,14 @@ impl FileDictionary {
     }
 
     pub fn write<W: Write>(&self, writer: &mut W) {
-        for word in self.words.iter() {
-            writer.write_all(self.format_line(word).as_bytes()).unwrap();
+        for word in &self.words {
+            writer
+                .write_all(Self::format_line(word).as_bytes())
+                .unwrap();
         }
     }
 
-    fn format_line(&self, value: &[u8]) -> String {
+    fn format_line(value: &[u8]) -> String {
         format!("\"{}\"\n", value.escape_ascii())
     }
 }

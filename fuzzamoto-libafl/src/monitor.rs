@@ -22,7 +22,7 @@ pub fn send_pushover_notification(token: &str, user: &str, message: &str) {
         .form(&params)
         .send()
     {
-        eprintln!("Failed to send pushover notification: {}", e);
+        eprintln!("Failed to send pushover notification: {e}");
     }
 }
 
@@ -62,40 +62,40 @@ where
         let trace = client_stats_manager
             .aggregated()
             .get("trace")
-            .map_or("0%".to_string(), |c| c.to_string());
+            .map_or("0%".to_string(), std::string::ToString::to_string);
         let stability = client_stats_manager
             .aggregated()
             .get("stability")
-            .map_or("100%".to_string(), |c| c.to_string());
+            .map_or("100%".to_string(), std::string::ToString::to_string);
 
         let crash = client_stats_manager
             .aggregated()
             .get("CRASH")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let blocktemplate = client_stats_manager
             .aggregated()
             .get("BLOCKTEMPLATE")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let inflation = client_stats_manager
             .aggregated()
             .get("INFLATION")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let netsplit = client_stats_manager
             .aggregated()
             .get("NETSPLIT")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let consensus = client_stats_manager
             .aggregated()
             .get("CONSENSUS")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let other = client_stats_manager
             .aggregated()
             .get("OTHER")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
         let timeout = client_stats_manager
             .aggregated()
             .get("timeout")
-            .map_or("0".to_string(), |c| c.to_string());
+            .map_or("0".to_string(), std::string::ToString::to_string);
 
         let global_stats = client_stats_manager.global_stats();
 
@@ -131,25 +131,25 @@ where
             let mut bug_details = Vec::new();
 
             if crash != "0" {
-                bug_details.push(format!("{}d", crash));
+                bug_details.push(format!("{crash}d"));
             }
             if blocktemplate != "0" {
-                bug_details.push(format!("{}b", blocktemplate));
+                bug_details.push(format!("{blocktemplate}b"));
             }
             if inflation != "0" {
-                bug_details.push(format!("{}i", inflation));
+                bug_details.push(format!("{inflation}i"));
             }
             if netsplit != "0" {
-                bug_details.push(format!("{}n", netsplit));
+                bug_details.push(format!("{netsplit}n"));
             }
             if consensus != "0" {
-                bug_details.push(format!("{}c", consensus));
+                bug_details.push(format!("{consensus}c"));
             }
             if other != "0" {
-                bug_details.push(format!("{}o", other));
+                bug_details.push(format!("{other}o"));
             }
             if timeout != "0" {
-                bug_details.push(format!("{}h", timeout));
+                bug_details.push(format!("{timeout}h"));
             }
 
             if bug_details.is_empty() {

@@ -93,7 +93,7 @@ impl<'a> Scenario<'a, TestCase<'a>> for HttpServerScenario {
         }
 
         if let Err(e) = self.target.is_alive() {
-            return ScenarioResult::Fail(format!("Target is not alive: {}", e));
+            return ScenarioResult::Fail(format!("Target is not alive: {e}"));
         }
 
         ScenarioResult::Ok

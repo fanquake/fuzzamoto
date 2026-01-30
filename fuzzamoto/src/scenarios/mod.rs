@@ -21,7 +21,7 @@ pub trait Scenario<'a, I>: Sized
 where
     I: ScenarioInput<'a>,
 {
-    // Create a new instance of the scenario, preparing the initial state of the test
+    /// Create a new instance of the scenario, preparing the initial state of the test
     fn new(args: &[String]) -> Result<Self, String>;
     // Run the test
     fn run(&mut self, testcase: I) -> ScenarioResult;

@@ -29,7 +29,7 @@ impl<R: RngCore> Splicer<R> for CombineMutator {
         rng: &mut R,
     ) -> MutatorResult {
         let combine_index = program
-            .get_random_instruction_index(rng, InstructionContext::Global)
+            .get_random_instruction_index(rng, &InstructionContext::Global)
             .expect("Global instruction index should always exist");
 
         let mut builder = ProgramBuilder::new(program.context.clone());
@@ -70,7 +70,14 @@ impl<R: RngCore> Splicer<R> for CombineMutator {
     }
 }
 
+impl Default for CombineMutator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CombineMutator {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }

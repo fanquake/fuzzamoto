@@ -36,12 +36,12 @@ where
 {
     fn evaluate(&self, target: &mut T) -> OracleResult {
         match target.is_alive() {
-            Ok(_) => OracleResult::Pass,
-            Err(err) => OracleResult::Fail(format!("Target is not alive: {}", err)),
+            Ok(()) => OracleResult::Pass,
+            Err(err) => OracleResult::Fail(format!("Target is not alive: {err}")),
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CrashOracle"
     }
 }
@@ -115,7 +115,7 @@ where
         ))
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ConsensusOracle"
     }
 }
@@ -142,13 +142,14 @@ where
     T2: Target<TX2> + ConnectableTarget,
 {
     fn evaluate(&self, context: &mut NetSplitContext<'a, T1, T2>) -> OracleResult {
-        match context.reference.is_connected_to(context.primary) {
-            false => OracleResult::Fail("Nodes are no longer connected!".to_string()),
-            true => OracleResult::Pass,
+        if context.reference.is_connected_to(context.primary) {
+            OracleResult::Pass
+        } else {
+            OracleResult::Fail("Nodes are no longer connected!".to_string())
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "NetSplitOracle"
     }
 }
@@ -168,11 +169,12 @@ impl<TX> Default for InflationOracle<TX> {
 
 use bitcoin::Amount;
 
+const HALVING_INTERVAL: u64 = 150; // 150 for `-regtest` mode
+const MAX_HALVINGS: u64 = 64;
+
 /// compute the (maximum possible) total number of bitcoins that has been produced at the given height
 pub fn total_coins_until(height: u64) -> Result<Amount, String> {
     let initial: Amount = Amount::from_int_btc(50); // 50 btc in satoshis; can't fail for sure
-    const HALVING_INTERVAL: u64 = 150; // 150 for `-regtest` mode
-    const MAX_HALVINGS: u64 = 64;
 
     let mut total: Amount = Amount::ZERO;
     let mut subsidy = initial;
@@ -220,28 +222,50 @@ where
     T: Target<TX> + HasTxOutSetInfo,
 {
     fn evaluate(&self, target: &mut T) -> OracleResult {
-        let tx_out_set_info = match target.tx_out_set_info() {
-            Ok(info) => info,
-            Err(_) => return OracleResult::Fail("Failed to retrieve TxOutSetInfo".to_string()),
+        let Ok(tx_out_set_info) = target.tx_out_set_info() else {
+            return OracleResult::Fail("Failed to retrieve TxOutSetInfo".to_string());
         };
 
         if let Ok(boolean) = self.is_amount_valid(&tx_out_set_info) {
             if boolean {
-                return OracleResult::Pass;
+                OracleResult::Pass
             } else {
-                return OracleResult::Fail(
+                OracleResult::Fail(
                     "total_amount exceeds the current maximum possible bitcoin supply".to_string(),
-                );
+                )
             }
         } else {
-            return OracleResult::Fail(
-                "Failed to compute the total amount of coins mined".to_string(),
-            );
+            OracleResult::Fail("Failed to compute the total amount of coins mined".to_string())
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "InflationOracle"
+    }
+}
+
+pub struct BlockTemplateOracle<TX>(PhantomData<TX>);
+
+impl<TX> Default for BlockTemplateOracle<TX> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T, TX> Oracle<T> for BlockTemplateOracle<TX>
+where
+    TX: Transport,
+    T: Target<TX> + HasBlockTemplate,
+{
+    fn evaluate(&self, target: &mut T) -> OracleResult {
+        match target.block_template() {
+            Ok(()) => OracleResult::Pass,
+            Err(e) => OracleResult::Fail(e.clone()),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "BlockTemplateOracle"
     }
 }
 
@@ -261,7 +285,7 @@ mod tests {
             for _ in 0..halvings {
                 subsidy = subsidy.checked_div(2).unwrap();
             }
-            return subsidy;
+            subsidy
         };
 
         for i in 0..1000 {
@@ -270,36 +294,8 @@ mod tests {
             for h in 0..=i {
                 expected_total = expected_total.checked_add(bitcoin_core_subsidy(h)).unwrap();
             }
-            println!(
-                "Height: {}, Total: {}, Expected: {}",
-                i, total, expected_total
-            );
+            println!("Height: {i}, Total: {total}, Expected: {expected_total}");
             assert_eq!(total, expected_total);
         }
-    }
-}
-
-pub struct BlockTemplateOracle<TX>(PhantomData<TX>);
-
-impl<TX> Default for BlockTemplateOracle<TX> {
-    fn default() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<T, TX> Oracle<T> for BlockTemplateOracle<TX>
-where
-    TX: Transport,
-    T: Target<TX> + HasBlockTemplate,
-{
-    fn evaluate(&self, target: &mut T) -> OracleResult {
-        match target.block_template() {
-            Ok(_) => OracleResult::Pass,
-            Err(e) => OracleResult::Fail(e.to_string()),
-        }
-    }
-
-    fn name(&self) -> &str {
-        "BlockTemplateOracle"
     }
 }

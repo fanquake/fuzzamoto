@@ -103,6 +103,7 @@ impl<TX: Transport, T: Target<TX>> CompactBlocksScenario<TX, T> {
         Some(&self.constructed_blocks[index % len])
     }
 
+    #[expect(clippy::cast_possible_truncation)]
     fn construct_block(
         &mut self,
         from: u16,
@@ -112,11 +113,8 @@ impl<TX: Transport, T: Target<TX>> CompactBlocksScenario<TX, T> {
         prevs: &[(u32, BlockHash, bitcoin::OutPoint)],
     ) {
         let prev = prevs[180..][prev as usize % (prevs.len() - 180)];
-        let Ok(mut block) =
-            test_utils::mining::mine_block(prev.1, prev.0 + 1, self.inner.time as u32 + 1)
-        else {
-            return;
-        };
+        let mut block =
+            test_utils::mining::mine_block(prev.1, prev.0 + 1, self.inner.time as u32 + 1);
 
         // Create a chain of `num_txs` transactions, each spending the previous one (one in one out).
         let funding_outpoint = prevs[1..=100][funding as usize % 100].2;
@@ -141,6 +139,7 @@ impl<TX: Transport, T: Target<TX>> CompactBlocksScenario<TX, T> {
             .push((from as usize % self.inner.connections.len(), block));
     }
 
+    #[expect(clippy::cast_possible_truncation)]
     fn send_compact_block(&mut self, block: u16, prefilled_txs: &[u16]) {
         let Some((from, block)) = self.get_block(block as usize) else {
             return;
@@ -151,7 +150,7 @@ impl<TX: Transport, T: Target<TX>> CompactBlocksScenario<TX, T> {
             .iter()
             .map(|tx| *tx as usize % block.txdata.len())
             .collect();
-        sorted_prefilled_txs.sort();
+        sorted_prefilled_txs.sort_unstable();
         sorted_prefilled_txs.dedup();
 
         // Create prefilled transactions with differential encoding
@@ -311,18 +310,18 @@ impl<TX: Transport, T: Target<TX>> Scenario<'_, TestCase> for CompactBlocksScena
                     }
                 }
                 Action::AdvanceTime { seconds } => {
-                    self.inner.time += seconds as u64;
+                    self.inner.time += u64::from(seconds);
                     let _ = self.inner.target.set_mocktime(self.inner.time);
                 }
             }
         }
 
-        for connection in self.inner.connections.iter_mut() {
+        for connection in &mut self.inner.connections {
             let _ = connection.ping();
         }
 
         if let Err(e) = self.inner.target.is_alive() {
-            return ScenarioResult::Fail(format!("Target is not alive: {}", e));
+            return ScenarioResult::Fail(format!("Target is not alive: {e}"));
         }
 
         ScenarioResult::Ok

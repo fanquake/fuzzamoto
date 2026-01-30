@@ -23,7 +23,7 @@ impl<R: RngCore> Generator<R> for GetAddrGenerator {
         }
 
         let conn_var = builder.get_or_create_random_connection(rng);
-        builder.force_append(vec![conn_var.index], Operation::SendGetAddr);
+        builder.force_append(vec![conn_var.index], &Operation::SendGetAddr);
 
         Ok(())
     }

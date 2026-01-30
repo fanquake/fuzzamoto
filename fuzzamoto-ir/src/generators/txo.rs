@@ -19,10 +19,12 @@ pub struct TxoGenerator {
 }
 
 impl TxoGenerator {
+    #[must_use]
     pub fn new(available_txos: Vec<Txo>) -> Self {
         Self { available_txos }
     }
 
+    #[must_use]
     pub fn from_file(path: &PathBuf) -> Self {
         let bytes = std::fs::read(path).unwrap();
         let txos: Vec<Txo> = postcard::from_bytes(&bytes).unwrap();
@@ -44,8 +46,8 @@ impl<R: RngCore> Generator<R> for TxoGenerator {
         let available_txo = &self.available_txos[rng.gen_range(0..self.available_txos.len())];
         builder.force_append(
             vec![],
-            Operation::LoadTxo {
-                outpoint: available_txo.outpoint.clone(),
+            &Operation::LoadTxo {
+                outpoint: available_txo.outpoint,
                 value: available_txo.value,
                 script_pubkey: available_txo.script_pubkey.clone(),
                 spending_script_sig: available_txo.spending_script_sig.clone(),

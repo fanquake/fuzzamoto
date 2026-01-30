@@ -63,7 +63,7 @@ where
 }
 
 // ?????
-impl<'a, M, T, O, S> Restartable<S> for IrMinimizerStage<'a, M, T, O> {
+impl<M, T, O, S> Restartable<S> for IrMinimizerStage<'_, M, T, O> {
     fn should_restart(&mut self, _state: &mut S) -> Result<bool, libafl::Error> {
         Ok(true)
     }
@@ -73,7 +73,7 @@ impl<'a, M, T, O, S> Restartable<S> for IrMinimizerStage<'a, M, T, O> {
     }
 }
 
-impl<'a, M, E, EM, S, Z, OT, T, O> Stage<E, EM, S, Z> for IrMinimizerStage<'a, M, T, O>
+impl<M, E, EM, S, Z, OT, T, O> Stage<E, EM, S, Z> for IrMinimizerStage<'_, M, T, O>
 where
     M: Minimizer,
     S: HasCorpus<IrInput> + HasCurrentTestcase<IrInput> + HasMetadata,
@@ -169,7 +169,7 @@ where
             log::info!(
                 "{} reduced ir written to: {:?}",
                 std::any::type_name::<M>(),
-                filepath
+                filepath.display()
             );
             let _ = testcase.input().as_ref().unwrap().to_file(filepath);
         }

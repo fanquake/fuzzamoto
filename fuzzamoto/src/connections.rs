@@ -47,15 +47,19 @@ impl Transport for V1Transport {
         hasher.write_all(&message.1).unwrap();
         let checksum = bitcoin_hashes::Sha256d::from_engine(hasher);
 
-        header.extend_from_slice(&(message.1.len() as u32).to_le_bytes());
+        header.extend_from_slice(
+            &u32::try_from(message.1.len())
+                .map_err(|_| "Failed to convert message len to u32")?
+                .to_le_bytes(),
+        );
         header.extend_from_slice(&checksum.as_byte_array()[0..4]);
 
         self.socket
             .write_all(&header)
-            .map_err(|e| format!("Failed to send message header: {}", e))?;
+            .map_err(|e| format!("Failed to send message header: {e}"))?;
         self.socket
             .write_all(&message.1)
-            .map_err(|e| format!("Failed to send message payload: {}", e))?;
+            .map_err(|e| format!("Failed to send message payload: {e}"))?;
 
         Ok(())
     }
@@ -65,20 +69,20 @@ impl Transport for V1Transport {
         let mut header_bytes = [0u8; 24];
         self.socket
             .read_exact(&mut header_bytes)
-            .map_err(|e| format!("Failed to read message header: {}", e))?;
+            .map_err(|e| format!("Failed to read message header: {e}"))?;
 
         let mut cursor = std::io::Cursor::new(&header_bytes);
 
         // Parse magic bytes (skip validation for now)
         let _magic = cursor
             .read_u32()
-            .map_err(|e| format!("Failed to read magic: {}", e))?;
+            .map_err(|e| format!("Failed to read magic: {e}"))?;
 
         // Read command (12 bytes, null-padded)
         let mut command = [0u8; 12];
         cursor
             .read_exact(&mut command)
-            .map_err(|e| format!("Failed to read command: {}", e))?;
+            .map_err(|e| format!("Failed to read command: {e}"))?;
 
         // Convert command to string, trimming null bytes
         let command = String::from_utf8_lossy(&command)
@@ -88,18 +92,18 @@ impl Transport for V1Transport {
         // Read payload length
         let payload_len = cursor
             .read_u32()
-            .map_err(|e| format!("Failed to read payload length: {}", e))?;
+            .map_err(|e| format!("Failed to read payload length: {e}"))?;
 
         // Skip checksum (we're not validating it)
         let _checksum = cursor
             .read_u32()
-            .map_err(|e| format!("Failed to read checksum: {}", e))?;
+            .map_err(|e| format!("Failed to read checksum: {e}"))?;
 
         // Read the payload
         let mut payload = vec![0u8; payload_len as usize];
         self.socket
             .read_exact(&mut payload)
-            .map_err(|e| format!("Failed to read payload: {}", e))?;
+            .map_err(|e| format!("Failed to read payload: {e}"))?;
 
         log::debug!(
             "received {:?} message (len={} on={:?})",
@@ -114,7 +118,7 @@ impl Transport for V1Transport {
     fn local_addr(&self) -> Result<net::SocketAddr, String> {
         self.socket
             .local_addr()
-            .map_err(|e| format!("Failed to get local address: {}", e))
+            .map_err(|e| format!("Failed to get local address: {e}"))
     }
 }
 
@@ -124,7 +128,7 @@ pub struct V2Transport {
 }
 
 impl V2Transport {
-    /// Create a new V2Transport by performing the BIP-324 handshake.
+    /// Create a new `V2Transport` by performing the BIP-324 handshake.
     ///
     /// # Arguments
     ///
@@ -156,7 +160,7 @@ impl V2Transport {
     }
 
     /// Convert BIP-324 short command ID to command string.
-    /// See: https://github.com/bitcoin/bips/blob/master/bip-0324.mediawiki#user-content-v2_Bitcoin_P2P_message_structure
+    /// See: <https://github.com/bitcoin/bips/blob/master/bip-0324.mediawiki#user-content-v2_Bitcoin_P2P_message_structure>
     fn short_command_id_to_string(id: u8) -> Option<String> {
         let cmd = match id {
             1 => "addr",
@@ -203,7 +207,7 @@ impl Transport for V2Transport {
         );
         // Long format: 0x00 followed by 12-byte ASCII command, then payload
         let mut command_bytes = [0u8; 13];
-        command_bytes[1..1 + message.0.len()].copy_from_slice(message.0.as_bytes());
+        command_bytes[1..=message.0.len()].copy_from_slice(message.0.as_bytes());
 
         let mut payload = Vec::with_capacity(13 + message.1.len());
         payload.extend_from_slice(&command_bytes);
@@ -293,7 +297,7 @@ impl<T: Transport> Connection<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct HandshakeOpts {
     pub time: i64,
     pub relay: bool,
@@ -367,7 +371,7 @@ impl<T: Transport> Connection<T> {
             opts.time,
             Address::new(&socket_addr, ServiceFlags::NONE),
             Address::new(&socket_addr, ServiceFlags::NONE),
-            0xdeadbeef,
+            0xdead_beef,
             String::from("fuzzamoto"),
             opts.starting_height,
         );
@@ -388,7 +392,7 @@ impl<T: Transport> Connection<T> {
         let mut version_bytes = Vec::new();
         version_message
             .consensus_encode(&mut version_bytes)
-            .map_err(|e| format!("Failed to encode version message: {}", e))?;
+            .map_err(|e| format!("Failed to encode version message: {e}"))?;
         self.transport
             .send(&("version".to_string(), version_bytes))?;
 

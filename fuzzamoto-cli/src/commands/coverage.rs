@@ -1,59 +1,53 @@
 use crate::error::{CliError, Result};
 use crate::utils::{file_ops, process};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct CoverageCommand;
 
 impl CoverageCommand {
     pub fn execute(
-        output: PathBuf,
-        corpus: PathBuf,
-        bitcoind: PathBuf,
-        scenario: PathBuf,
+        output: &Path,
+        corpus: &Path,
+        bitcoind: &Path,
+        scenario: &Path,
         profraws: Option<Vec<PathBuf>>,
         run_only: bool,
     ) -> Result<()> {
-        file_ops::ensure_file_exists(&bitcoind)?;
-        file_ops::ensure_file_exists(&scenario)?;
+        file_ops::ensure_file_exists(bitcoind)?;
+        file_ops::ensure_file_exists(scenario)?;
 
         if run_only {
-            let corpus_files = file_ops::read_dir_files(&corpus)?;
+            let corpus_files = file_ops::read_dir_files(corpus)?;
             for corpus_file in corpus_files {
-                if let Err(e) = Self::run_one_input(&output, &corpus_file, &bitcoind, &scenario) {
-                    log::error!("Failed to run input ({:?}): {}", corpus_file, e);
+                if let Err(e) = Self::run_one_input(output, &corpus_file, bitcoind, scenario) {
+                    log::error!("Failed to run input ({:?}): {e}", corpus_file.display());
                 }
             }
             return Ok(());
         }
 
-        let profdata = match profraws {
-            Some(profraws) => Self::merge_profraws(&output, &profraws)?,
-            None => {
-                let corpus_files = file_ops::read_dir_files(&corpus)?;
-                log::info!("{:?}", corpus_files);
-                // Run scenario for each corpus file
-                for corpus_file in corpus_files {
-                    if let Err(e) = Self::run_one_input(&output, &corpus_file, &bitcoind, &scenario)
-                    {
-                        log::error!("Failed to run input ({:?}): {}", corpus_file, e);
-                    }
+        let profdata = if let Some(profraws) = profraws {
+            let profraws: Vec<&Path> = profraws.iter().map(PathBuf::as_path).collect();
+            Self::merge_profraws(output, &profraws)?
+        } else {
+            let corpus_files = file_ops::read_dir_files(corpus)?;
+            log::info!("{corpus_files:?}");
+            // Run scenario for each corpus file
+            for corpus_file in corpus_files {
+                if let Err(e) = Self::run_one_input(output, &corpus_file, bitcoind, scenario) {
+                    log::error!("Failed to run input ({:?}): {e}", corpus_file.display());
                 }
-
-                let profraws_dir = vec![output.clone()];
-                Self::merge_profraws(&output, &profraws_dir)?
             }
+
+            let profraws_dir = vec![output];
+            Self::merge_profraws(output, &profraws_dir)?
         };
 
-        Self::generate_report(&output, &bitcoind, &profdata)?;
+        Self::generate_report(output, bitcoind, &profdata)?;
         Ok(())
     }
 
-    fn run_one_input(
-        output: &PathBuf,
-        input: &PathBuf,
-        bitcoind: &PathBuf,
-        scenario: &PathBuf,
-    ) -> Result<()> {
+    fn run_one_input(output: &Path, input: &Path, bitcoind: &Path, scenario: &Path) -> Result<()> {
         log::info!("Running scenario with input: {}", input.display());
 
         let profraw_file = output.join(format!(
@@ -72,16 +66,12 @@ impl CoverageCommand {
         Ok(())
     }
 
-    fn generate_report(
-        output: &PathBuf,
-        bitcoind: &PathBuf,
-        coverage_profdata: &PathBuf,
-    ) -> Result<()> {
+    fn generate_report(output: &Path, bitcoind: &Path, coverage_profdata: &Path) -> Result<()> {
         // Generate HTML report
         let coverage_report_dir = output.join("coverage-report");
         let coverage_report_str = coverage_report_dir.to_str().unwrap();
         let instr_profile_arg = format!("-instr-profile={}", coverage_profdata.to_str().unwrap());
-        let output_dir_arg = format!("-output-dir={}", coverage_report_str);
+        let output_dir_arg = format!("-output-dir={coverage_report_str}");
 
         let show_args = vec![
             "show",
@@ -105,7 +95,7 @@ impl CoverageCommand {
         Ok(())
     }
 
-    fn merge_profraws(output: &PathBuf, profraws: &Vec<PathBuf>) -> Result<PathBuf> {
+    fn merge_profraws(output: &Path, profraws: &Vec<&Path>) -> Result<PathBuf> {
         if profraws.is_empty() {
             return Err(CliError::InvalidInput(
                 "No profraws directory provided".to_string(),
@@ -117,10 +107,10 @@ impl CoverageCommand {
         for p in profraws {
             for entry in std::fs::read_dir(p)? {
                 let path = entry?.path();
-                if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                    if file_name.contains("coverage.profraw") {
-                        profraw_files.push(path.to_str().unwrap().to_string());
-                    }
+                if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
+                    && file_name.contains("coverage.profraw")
+                {
+                    profraw_files.push(path.to_str().unwrap().to_string());
                 }
             }
         }
@@ -132,8 +122,11 @@ impl CoverageCommand {
         let merged = output.join("coverage.profdata");
         let mut merge_args = vec!["merge", "-sparse"];
 
-        let inputs: Vec<&str> = profraw_files.iter().map(|p| p.as_str()).collect();
-        log::info!("Merging profdata from {:?}", inputs);
+        let inputs: Vec<&str> = profraw_files
+            .iter()
+            .map(std::string::String::as_str)
+            .collect();
+        log::info!("Merging profdata from {inputs:?}");
 
         merge_args.extend(inputs);
         merge_args.extend(["-o", merged.to_str().unwrap()]);

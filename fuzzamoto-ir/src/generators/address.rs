@@ -15,12 +15,14 @@ pub struct AddrRelayGenerator {
 }
 
 impl AddrRelayGenerator {
+    #[must_use]
     pub fn new(addresses: Vec<AddrRecord>) -> Self {
         Self { addresses }
     }
 }
 
 impl<R: RngCore> Generator<R> for AddrRelayGenerator {
+    #[expect(clippy::cast_possible_truncation)]
     fn generate(
         &self,
         builder: &mut ProgramBuilder,
@@ -33,20 +35,20 @@ impl<R: RngCore> Generator<R> for AddrRelayGenerator {
             .filter_map(|addr| matches!(addr, AddrRecord::V1 { .. }).then_some(addr.clone()))
             .collect();
         let conn_var = builder.get_or_create_random_connection(rng);
-        let mut_list = builder.force_append_expect_output(vec![], Operation::BeginBuildAddrList);
+        let mut_list = builder.force_append_expect_output(vec![], &Operation::BeginBuildAddrList);
 
-        let timestamp = builder.context().timestamp.min(u32::MAX as u64) as u32;
+        let timestamp = builder.context().timestamp.min(u64::from(u32::MAX)) as u32;
         let count = rng.gen_range(1..=MAX_ADDR_ENTRIES);
 
         for _ in 0..count {
             let addr = pick_or_generate_v1(&v1_context, rng, timestamp);
-            let addr_var = builder.force_append_expect_output(vec![], Operation::LoadAddr(addr));
-            builder.force_append(vec![mut_list.index, addr_var.index], Operation::AddAddr);
+            let addr_var = builder.force_append_expect_output(vec![], &Operation::LoadAddr(addr));
+            builder.force_append(vec![mut_list.index, addr_var.index], &Operation::AddAddr);
         }
 
         let list_var =
-            builder.force_append_expect_output(vec![mut_list.index], Operation::EndBuildAddrList);
-        builder.force_append(vec![conn_var.index, list_var.index], Operation::SendAddr);
+            builder.force_append_expect_output(vec![mut_list.index], &Operation::EndBuildAddrList);
+        builder.force_append(vec![conn_var.index, list_var.index], &Operation::SendAddr);
 
         Ok(())
     }
@@ -63,12 +65,14 @@ pub struct AddrRelayV2Generator {
 }
 
 impl AddrRelayV2Generator {
+    #[must_use]
     pub fn new(addresses: Vec<AddrRecord>) -> Self {
         Self { addresses }
     }
 }
 
 impl<R: RngCore> Generator<R> for AddrRelayV2Generator {
+    #[expect(clippy::cast_possible_truncation)]
     fn generate(
         &self,
         builder: &mut ProgramBuilder,
@@ -82,26 +86,26 @@ impl<R: RngCore> Generator<R> for AddrRelayV2Generator {
                 AddrRecord::V2 {
                     network: AddrNetwork::TorV2,
                     ..
-                } => None,
+                }
+                | AddrRecord::V1 { .. } => None,
                 AddrRecord::V2 { .. } => Some(addr.clone()),
-                _ => None,
             })
             .collect();
         let conn_var = builder.get_or_create_random_connection(rng);
-        let mut_list = builder.force_append_expect_output(vec![], Operation::BeginBuildAddrListV2);
+        let mut_list = builder.force_append_expect_output(vec![], &Operation::BeginBuildAddrListV2);
 
-        let timestamp = builder.context().timestamp.min(u32::MAX as u64) as u32;
+        let timestamp = builder.context().timestamp.min(u64::from(u32::MAX)) as u32;
         let count = rng.gen_range(1..=MAX_ADDR_ENTRIES);
 
         for _ in 0..count {
             let addr = pick_or_generate_v2(&v2_context, rng, timestamp);
-            let addr_var = builder.force_append_expect_output(vec![], Operation::LoadAddr(addr));
-            builder.force_append(vec![mut_list.index, addr_var.index], Operation::AddAddrV2);
+            let addr_var = builder.force_append_expect_output(vec![], &Operation::LoadAddr(addr));
+            builder.force_append(vec![mut_list.index, addr_var.index], &Operation::AddAddrV2);
         }
 
-        let list_var =
-            builder.force_append_expect_output(vec![mut_list.index], Operation::EndBuildAddrListV2);
-        builder.force_append(vec![conn_var.index, list_var.index], Operation::SendAddrV2);
+        let list_var = builder
+            .force_append_expect_output(vec![mut_list.index], &Operation::EndBuildAddrListV2);
+        builder.force_append(vec![conn_var.index, list_var.index], &Operation::SendAddrV2);
 
         Ok(())
     }
@@ -215,10 +219,10 @@ pub(crate) fn random_services<R: RngCore>(rng: &mut R, prefer_v2: bool) -> u64 {
 
 /// Pick a port, preferring Bitcoin defaults but allowing other values.
 pub(crate) fn random_port<R: RngCore>(rng: &mut R, prefer: Option<u16>) -> u16 {
-    if let Some(port) = prefer {
-        if rng.gen_bool(0.3) {
-            return port;
-        }
+    if let Some(port) = prefer
+        && rng.gen_bool(0.3)
+    {
+        return port;
     }
 
     rng.gen_range(1024..=65535)
@@ -251,22 +255,17 @@ pub(crate) fn random_public_ipv4<R: RngCore>(rng: &mut R) -> [u8; 4] {
 pub(crate) fn is_routable_ipv4(octets: [u8; 4]) -> bool {
     // Covers RFC1918, RFC5735, RFC6598, link-local, multicast, and doc ranges.
     match octets {
-        [0, ..] => false,
-        [10, ..] => false,
+        [0 | 10 | 127 | 224..=239 | 240..=255, ..]
+        | [169, 254, ..]
+        | [192, 0, 0 | 2, ..]
+        | [192, 88, 99, ..]
+        | [192, 168, ..]
+        | [198, 18..=19, ..]
+        | [198, 51, 100, ..]
+        | [203, 0, 113, ..]
+        | [_, 0, 0, 0] => false,
         [100, b2, ..] if (b2 & 0b1100_0000) == 0b0100_0000 => false, // 100.64/10
-        [127, ..] => false,
-        [169, 254, ..] => false,
-        [172, b2 @ 16..=31, ..] if b2 >= 16 && b2 <= 31 => false,
-        [192, 0, 0, ..] => false,
-        [192, 0, 2, ..] => false,
-        [192, 88, 99, ..] => false,
-        [192, 168, ..] => false,
-        [198, 18..=19, ..] => false,
-        [198, 51, 100, ..] => false,
-        [203, 0, 113, ..] => false,
-        [224..=239, ..] => false,
-        [240..=255, ..] => false,
-        [_, 0, 0, 0] => false,
+        [172, b2 @ 16..=31, ..] if (16..=31).contains(&b2) => false,
         _ => true,
     }
 }

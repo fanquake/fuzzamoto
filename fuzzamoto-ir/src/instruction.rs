@@ -7,6 +7,7 @@ pub struct Instruction {
 }
 
 impl Instruction {
+    #[must_use]
     pub fn is_input_mutable(&self) -> bool {
         assert!(self.inputs.len() == self.operation.num_inputs());
 
@@ -28,10 +29,11 @@ impl Instruction {
             | Operation::EndBuildCoinbaseTx
             | Operation::BeginBuildCoinbaseTxOutputs
             | Operation::EndBuildCoinbaseTxOutputs => false,
-            _ => self.inputs.len() > 0,
+            _ => !self.inputs.is_empty(),
         }
     }
 
+    #[must_use]
     pub fn is_operation_mutable(&self) -> bool {
         match self.operation {
             Operation::LoadAmount(_)
@@ -72,6 +74,7 @@ impl Instruction {
         }
     }
 
+    #[must_use]
     pub fn is_noppable(&self) -> bool {
         match self.operation {
             Operation::LoadBytes(_)
@@ -187,6 +190,7 @@ impl Instruction {
 
     /// If the instruction is a block beginning, return the context that is entered after the
     /// instruction is executed.
+    #[must_use]
     pub fn entered_context_after_execution(&self) -> Option<InstructionContext> {
         if self.operation.is_block_begin() {
             return match self.operation {

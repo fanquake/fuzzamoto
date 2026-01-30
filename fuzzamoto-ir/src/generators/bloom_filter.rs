@@ -24,8 +24,8 @@ fn init_filter<R: RngCore>(builder: &mut ProgramBuilder, rng: &mut R) -> Indexed
     let mut bytes = vec![0; size];
     if rng.gen_bool(0.5) {
         rng.fill_bytes(bytes.as_mut_slice());
-    };
-    let nhash_funcs = rng.gen_range(1..MAX_HASH_FUNCS) as u32;
+    }
+    let nhash_funcs = rng.gen_range(1..MAX_HASH_FUNCS);
 
     builder
         .append(Instruction {
@@ -44,7 +44,7 @@ fn init_filter<R: RngCore>(builder: &mut ProgramBuilder, rng: &mut R) -> Indexed
 
 fn populate_filter_from_txdata(
     builder: &mut ProgramBuilder,
-    filter_var: IndexedVariable,
+    filter_var: &IndexedVariable,
     txs: &[IndexedVariable],
     txos: &[IndexedVariable],
 ) -> IndexedVariable {
@@ -98,10 +98,10 @@ impl<R: RngCore> Generator<R> for BloomFilterLoadGenerator {
 
         if rng.gen_bool(0.2) {
             // Populate the filter with transactions or output data present in the program
-            let available_txs = builder.get_random_variables(rng, Variable::ConstTx);
-            let avaibale_txos = builder.get_random_variables(rng, Variable::Txo);
+            let available_txs = builder.get_random_variables(rng, &Variable::ConstTx);
+            let avaibale_txos = builder.get_random_variables(rng, &Variable::Txo);
             filter_var =
-                populate_filter_from_txdata(builder, filter_var, &available_txs, &avaibale_txos);
+                populate_filter_from_txdata(builder, &filter_var, &available_txs, &avaibale_txos);
         }
 
         builder
@@ -131,7 +131,7 @@ impl<R: RngCore> Generator<R> for BloomFilterAddGenerator {
     ) -> GeneratorResult {
         let connection_var = builder.get_or_create_random_connection(rng);
         let filter_loaded = builder
-            .get_nearest_variable(Variable::ConstFilterLoad)
+            .get_nearest_variable(&Variable::ConstFilterLoad)
             .is_some();
 
         if !filter_loaded && rng.gen_bool(0.95) {
@@ -174,7 +174,7 @@ impl<R: RngCore> Generator<R> for BloomFilterAddGenerator {
             // Generate `BuildFilterAddFromTx` operation (picking a random existing `ConstTx`
             // variable)
             1 => builder
-                .get_random_variable(rng, Variable::ConstTx)
+                .get_random_variable(rng, &Variable::ConstTx)
                 .map(|tx_var| {
                     builder
                         .append(Instruction {
@@ -188,7 +188,7 @@ impl<R: RngCore> Generator<R> for BloomFilterAddGenerator {
             // Generate `BuildFilterAddFromTxo` operation (picking a random existing `Txo`
             // variable)
             2 => builder
-                .get_random_variable(rng, Variable::Txo)
+                .get_random_variable(rng, &Variable::Txo)
                 .map(|txo_var| {
                     builder
                         .append(Instruction {

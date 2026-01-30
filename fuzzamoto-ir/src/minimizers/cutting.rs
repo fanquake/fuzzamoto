@@ -8,7 +8,9 @@ pub struct CuttingMinimizer {
     current: usize,
     chopped: usize,
 }
-
+#[expect(clippy::cast_sign_loss)]
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_precision_loss)]
 impl Minimizer for CuttingMinimizer {
     fn new(program: Program) -> Self {
         Self {
@@ -82,9 +84,8 @@ mod tests {
                 "current={} chopped={}",
                 minimizer.current, minimizer.chopped
             );
-            if !set.contains_key(&minimizer.current) {
-                set.insert(minimizer.current, rng.gen_bool(0.5));
-            }
+            set.entry(minimizer.current)
+                .or_insert_with(|| rng.gen_bool(0.5));
             if *set.get(&minimizer.current).unwrap() {
                 minimizer.success();
             } else {

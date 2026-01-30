@@ -42,7 +42,14 @@ impl<R: RngCore> Splicer<R> for ConcatMutator {
     }
 }
 
+impl Default for ConcatMutator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConcatMutator {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
