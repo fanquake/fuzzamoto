@@ -817,8 +817,8 @@ impl Compiler {
                 let nonce = self.get_input::<u64>(&instruction.inputs, 1)?;
 
                 // TODO: put other txs than coinbase tx
-                let prefill = vec![0]; // the coinbase tx
-                let header_and_shortids = HeaderAndShortIds::from_block(block, *nonce, 2, &prefill)
+                let prefill = &[];
+                let header_and_shortids = HeaderAndShortIds::from_block(block, *nonce, 2, prefill)
                     .expect("from_block should never fail");
                 self.append_variable(CmpctBlock {
                     compact_block: header_and_shortids,
