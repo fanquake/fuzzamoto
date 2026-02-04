@@ -18,6 +18,23 @@ Build the container image:
 docker build -t fuzzamoto .
 ```
 
+You can customize the Bitcoin Core source when building the image using the following build arguments:
+
+### Build Arguments
+
+- `OWNER`: Repository owner (default: `bitcoin`)
+- `REPO`: Repository name (default: `bitcoin`)
+- `PR_NUMBER`: Pull request number to build from
+- `BITCOIN_COMMIT`: Specific commit hash to build
+
+Examples:
+
+```
+docker build --build-arg PR_NUMBER=1234 -t fuzzamoto .
+docker build --build-arg BITCOIN_COMMIT=abc123 -t fuzzamoto .
+docker build --build-arg OWNER=abc123 --build-arg PR_NUMBER=1 -t fuzzamoto .
+```
+
 And then create a new container from it:
 
 ```
