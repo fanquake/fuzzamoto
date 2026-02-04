@@ -22,6 +22,23 @@ Build the container image:
 docker build -f Dockerfile.libafl -t fuzzamoto-libafl .
 ```
 
+You can customize the Bitcoin Core source when building the image using the following build arguments:
+
+### Build Arguments
+
+- `OWNER`: Repository owner (default: `bitcoin`)
+- `REPO`: Repository name (default: `bitcoin`)
+- `PR_NUMBER`: Pull request number to build from
+- `BITCOIN_COMMIT`: Specific commit hash to build
+
+Examples:
+
+```
+docker build --build-arg PR_NUMBER=1234 -f Dockerfile.libafl -t fuzzamoto-libafl .
+docker build --build-arg BITCOIN_COMMIT=abc123 -f Dockerfile.libafl -t fuzzamoto-libafl .
+docker build --build-arg OWNER=abc123 --build-arg PR_NUMBER=1 -f Dockerfile.libafl -t fuzzamoto-libafl .
+```
+
 And then create a new container from it (mounting the current directory to
 `/fuzzamoto`):
 
