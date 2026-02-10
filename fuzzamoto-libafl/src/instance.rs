@@ -477,14 +477,16 @@ where
                     ),
                 )
             ),
-            stability,
-            probing,
             IfStage::new(
                 |_, _, _, _| Ok(self.options.minimize_input.is_none()),
-                tuple_list!(TuneableMutationalStage::new(&mut state, mutator))
+                tuple_list!(
+                    stability,
+                    probing,
+                    TuneableMutationalStage::new(&mut state, mutator),
+                    timeout_verify_stage,
+                    bench_stats_stage,
+                )
             ),
-            timeout_verify_stage,
-            bench_stats_stage,
         );
         self.fuzz(&mut state, &mut fuzzer, &mut executor, &mut stages)
     }
