@@ -324,7 +324,8 @@ pub struct GetBlockTxn {
     pub triggering_instruction_index: usize,
     /// Variable index of the block whose transactions were requested
     pub block_variable: usize,
-    /// Indices of the transaction indices variables requested
+    /// Block-level transaction indices (from `BlockTransactionsRequest.indexes`) that the peer
+    /// requested. These are 0-based positions into the full block txdata (0 = coinbase).
     pub tx_indices_variables: Vec<usize>,
 }
 

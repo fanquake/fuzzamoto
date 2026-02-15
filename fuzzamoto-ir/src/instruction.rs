@@ -93,6 +93,10 @@ impl Instruction {
             | Operation::AddConnection
             | Operation::AddConnectionWithHandshake { .. }
             | Operation::LoadHandshakeOpts { .. }
+            | Operation::BeginPrefillTransactions
+            | Operation::AddPrefillTx
+            | Operation::EndPrefillTransactions
+            | Operation::BuildCompactBlock
             | Operation::BuildPayToWitnessScriptHash
             | Operation::BuildPayToScriptHash
             | Operation::BuildRawScripts
@@ -180,7 +184,6 @@ impl Instruction {
             | Operation::BeginBlockTransactions
             | Operation::BeginBuildFilterLoad
             | Operation::EndBuildFilterLoad
-            | Operation::BuildCompactBlock
             | Operation::BeginBuildCoinbaseTx
             | Operation::EndBuildCoinbaseTx
             | Operation::BeginBuildCoinbaseTxOutputs
@@ -211,6 +214,7 @@ impl Instruction {
                 Operation::BeginBuildCoinbaseTxOutputs => {
                     Some(InstructionContext::BuildCoinbaseTxOutputs)
                 }
+                Operation::BeginPrefillTransactions => Some(InstructionContext::BuildPrefill),
                 _ => unimplemented!("Every block begin enters a context"),
             };
         }
@@ -244,4 +248,5 @@ pub enum InstructionContext {
     BuildCoinbaseTx,
     BuildCoinbaseTxOutputs,
     BuildBlockTxn,
+    BuildPrefill,
 }

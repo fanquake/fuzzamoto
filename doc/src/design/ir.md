@@ -203,9 +203,12 @@ containing the correctly serialized transactions `v15` and `v30`.
 | `BeginWitnessStack`| Begins building a witness stack. |
 | `AddWitness` | Adds an item to the witness stack. |
 | `EndWitnessStack`| Finishes building the witness stack. |
-| **Compact Block** | **Construct a compact block.**|
-| `BuildCompactBlock` | Builds a compact block. |
-| **Blocktxn building** | **Construct a BIP152 blocktxn message**|
+| **Compact block building** | **Construct a BIP152 compact block.**|
+| `BeginPrefillTransactions` | Begins building the prefill transaction list for a compact block. |
+| `AddPrefillTx` | Adds a transaction from the block to the prefill list. |
+| `EndPrefillTransactions` | Finishes building the prefill list. |
+| `BuildCompactBlock` | Builds a compact block from a block, a nonce, and a prefill list. |
+| **Blocktxn building** | **Construct a BIP152 blocktxn message.**|
 | `BeginBuildBlockTxn` | Begins building a blocktxn message after sending a compact block. |
 | `AddTxToBlockTxn` | Adds a transaction to the blocktxn message. |
 | `EndBuildBlockTxn` | Finishes building a blocktxn message. |
@@ -289,6 +292,8 @@ fuzzing campaign. The following generators are available:
 - `HeaderGenerator`: Generates instructions to build a header
 - `AddTxToBlockGenerator`: Generates instructions to add a transaction to a
   block
+- `CompactBlockGenerator`: Generates instructions to build and send a compact
+  block for an existing block, with a randomly chosen prefill transaction list
 - `OneParentOneChildGenerator`: Generates instructions for building two new
   transactions (a 1-parent 1-child package) and sending them to a node
 - ... see

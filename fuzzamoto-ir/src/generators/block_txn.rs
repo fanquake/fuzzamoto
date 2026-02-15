@@ -34,6 +34,13 @@ impl<R: RngCore> Generator<R> for BlockTxnGenerator {
                 .expect("Triggering instruction not found");
 
             let block_variable = blocktxn_req[choice].block_variable;
+
+            // Resolve the block-level positions to tx variable indices. get_block_vars returns
+            // the non-coinbase tx var indices in block order (index 0 = block position 1).
+            let Some(tx_var_indices) = builder.get_block_vars(block_variable) else {
+                return Err(GeneratorError::MissingVariables);
+            };
+
             let mut_block_txn = builder
                 .append(Instruction {
                     inputs: vec![block_variable],
@@ -43,13 +50,19 @@ impl<R: RngCore> Generator<R> for BlockTxnGenerator {
                 .pop()
                 .expect("BeginBuildBlockTxn should always produce a var");
 
-            for tx in &blocktxn_req[choice].tx_indices_variables {
+            for &block_pos in &blocktxn_req[choice].tx_indices_variables {
+                // tx_var_indices[0] = block position 1 (first non-coinbase tx), so subtract 1.
+                // block_pos 0 (coinbase) has no entry; checked_sub(1) returns None and is skipped.
+                let Some(&tx_var) = block_pos.checked_sub(1).and_then(|i| tx_var_indices.get(i))
+                else {
+                    continue;
+                };
                 builder
                     .append(Instruction {
-                        inputs: vec![mut_block_txn.index, *tx],
+                        inputs: vec![mut_block_txn.index, tx_var],
                         operation: Operation::AddTxToBlockTxn,
                     })
-                    .expect("Inserting AddTxToBlockTxn should always suceed");
+                    .expect("Inserting AddTxToBlockTxn should always succeed");
             }
 
             let block_txn = builder
