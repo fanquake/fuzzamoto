@@ -151,7 +151,7 @@ where
             }
         }
 
-        log::info!("{} done reducing", std::any::type_name::<M>(),);
+        log::info!("{} done reducing", std::any::type_name::<M>());
 
         if success {
             *self.keep_minimizing.borrow_mut() += 1;

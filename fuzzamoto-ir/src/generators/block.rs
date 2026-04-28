@@ -23,10 +23,9 @@ fn grafting_header<R: RngCore>(
     // we need to know the current height first.
     let tip_height = if let Some(nth) = nth {
         nth.height
-    } else if let Some(tip_header) = headers.iter().max_by_key(|h| h.height) {
-        u64::from(tip_header.height)
     } else {
-        return None;
+        let tip_header = headers.iter().max_by_key(|h| h.height)?;
+        u64::from(tip_header.height)
     };
 
     if !meta.recent_blocks().is_empty() {

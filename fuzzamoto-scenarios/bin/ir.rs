@@ -400,7 +400,7 @@ where
     fn evaluate_oracles(&mut self) -> ScenarioResult {
         let crash_oracle = CrashOracle::<TX>::default();
         if let OracleResult::Fail(e) = crash_oracle.evaluate(&mut self.inner.target) {
-            return ScenarioResult::Fail(format!("CRASH: CRASH; {e}",));
+            return ScenarioResult::Fail(format!("CRASH: CRASH; {e}"));
         }
 
         #[cfg(feature = "oracle_blocktemplate")]
