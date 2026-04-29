@@ -49,7 +49,7 @@ impl CaptureTimeoutFeedback {
         } else {
             testcase.input().as_ref().unwrap().generate_name(None)
         };
-        let file_path = self.objective_dir.join(format!("{prefix}-{base}",));
+        let file_path = self.objective_dir.join(format!("{prefix}-{base}"));
         *testcase.file_path_mut() = Some(file_path);
     }
 }
@@ -158,7 +158,7 @@ impl CrashCauseFeedback {
         } else {
             testcase.input().as_ref().unwrap().generate_name(None)
         };
-        let file_path = self.objective_dir.join(format!("{prefix}-{base}",));
+        let file_path = self.objective_dir.join(format!("{prefix}-{base}"));
         *testcase.file_path_mut() = Some(file_path);
     }
 }

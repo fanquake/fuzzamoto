@@ -193,6 +193,7 @@ int sigaction(int signum, const struct sigaction *act,
   case SIGILL:
   case SIGBUS:
   case SIGABRT:
+  case SIGIOT:
   case SIGTRAP:
   case SIGSYS:
   case SIGSEGV:

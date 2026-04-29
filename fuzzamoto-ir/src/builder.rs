@@ -259,16 +259,14 @@ impl ProgramBuilder {
         instruction.operation.check_input_types(&input_vars)?;
 
         match &instruction.operation {
-            Operation::LoadNode(idx) => {
-                if *idx >= self.context.num_nodes {
-                    return Err(ProgramValidationError::NodeNotFound(*idx));
-                }
+            Operation::LoadNode(idx) if *idx >= self.context.num_nodes => {
+                return Err(ProgramValidationError::NodeNotFound(*idx));
             }
-            Operation::LoadConnection(idx) => {
-                if *idx >= self.context.num_connections {
-                    return Err(ProgramValidationError::ConnectionNotFound(*idx));
-                }
+
+            Operation::LoadConnection(idx) if *idx >= self.context.num_connections => {
+                return Err(ProgramValidationError::ConnectionNotFound(*idx));
             }
+
             Operation::LoadConnectionType(connection_type) => match connection_type.as_str() {
                 "outbound" | "inbound" => {}
                 _ => {
@@ -587,13 +585,11 @@ impl ProgramBuilder {
                 Operation::TakeTxo | Operation::LoadTxo { .. } => {
                     utxos.insert(var_count);
                 }
-                Operation::AddTxInput => {
-                    if !utxos.remove(&instruction.inputs[1]) {
-                        continue;
-                    }
-                    // AddTxInput instructions have no output variables so we can remove them and
-                    // use `variable_count` above without issue
+                Operation::AddTxInput if !utxos.remove(&instruction.inputs[1]) => {
+                    continue;
                 }
+                // AddTxInput instructions have no output variables so we can remove them and
+                // use `variable_count` above without issue
                 _ => {}
             }
 
