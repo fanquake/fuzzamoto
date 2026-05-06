@@ -11,8 +11,7 @@ design overview.
   signature (`get_input_variables`, `get_output_variables`,
   `get_inner_output_variables`), scope rules (`is_block_begin`, `is_block_end`,
   `is_matching_block_begin`, `allow_insertion_in_block`), and
-  mutation/minimization behaviour (`is_operation_mutable`, `mutates_nth_input`,
-  `is_noppable`).
+  mutation/minimization behaviour (`is_operation_mutable`, `is_noppable`).
 - Update `fuzzamoto-ir/src/instruction.rs` so the builder and mutators can spot
   context changes (`entered_context_after_execution`) and know whether the
   operation can be mutated or nopped out.
