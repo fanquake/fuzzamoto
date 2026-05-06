@@ -454,24 +454,6 @@ fn hex_witness_stack(witness: &[Vec<u8>]) -> String {
 
 impl Operation {
     #[must_use]
-    pub fn mutates_nth_input(&self, index: usize) -> bool {
-        matches!(self,
-            Operation::AddTxInput
-            | Operation::AddTxOutput
-            | Operation::AddCoinbaseTxOutput
-            | Operation::TakeTxo
-            | Operation::TakeCoinbaseTxo
-            | Operation::AddWitness
-            | Operation::AddTxidInv
-            | Operation::AddTxidWithWitnessInv
-            | Operation::AddWtxidInv
-            | Operation::AddTx
-            | Operation::AddAddr
-            | Operation::AddAddrV2
-                if index == 0)
-    }
-
-    #[must_use]
     pub fn is_block_begin(&self) -> bool {
         match self {
             Operation::BeginBuildTx
