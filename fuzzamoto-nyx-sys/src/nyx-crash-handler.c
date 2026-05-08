@@ -193,7 +193,6 @@ int sigaction(int signum, const struct sigaction *act,
   case SIGILL:
   case SIGBUS:
   case SIGABRT:
-  case SIGIOT:
   case SIGTRAP:
   case SIGSYS:
   case SIGSEGV:
@@ -242,7 +241,7 @@ void initialize_crash_handling() {
     }
   }
 
-  LOG("[info] All signal handlers installed!\n")
+  LOG("[info] All signal handlers installed!\n");
 }
 #else
 void initialize_crash_handling() {}
