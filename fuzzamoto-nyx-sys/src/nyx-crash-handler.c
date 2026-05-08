@@ -241,7 +241,7 @@ void initialize_crash_handling() {
     }
   }
 
-  LOG("[info] All signal handlers installed!\n")
+  LOG("[info] All signal handlers installed!\n");
 }
 #else
 void initialize_crash_handling() {}
