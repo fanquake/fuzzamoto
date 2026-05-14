@@ -115,7 +115,10 @@ pub enum Operation {
     BuildPayToAnchor,
     BuildPayToTaproot,
 
-    // cmpctblock building operations
+    // Dynamic prefill building operations for compact blocks
+    BeginPrefillTransactions,
+    AddPrefillTx,
+    EndPrefillTransactions,
     BuildCompactBlock,
 
     // filterload building operations
@@ -368,6 +371,9 @@ impl fmt::Display for Operation {
             Operation::EndWitnessStack => write!(f, "EndWitnessStack"),
             Operation::AddWitness => write!(f, "AddWitness"),
 
+            Operation::BeginPrefillTransactions => write!(f, "BeginPrefillTransactions"),
+            Operation::AddPrefillTx => write!(f, "AddPrefillTx"),
+            Operation::EndPrefillTransactions => write!(f, "EndPrefillTransactions"),
             Operation::BuildCompactBlock => write!(f, "BuildCompactBlock"),
 
             Operation::BeginBuildCoinbaseTx => write!(f, "BeginBuildCoinbaseTx"),
@@ -467,7 +473,8 @@ impl Operation {
             | Operation::BeginBuildFilterLoad
             | Operation::BeginBuildCoinbaseTx
             | Operation::BeginBuildBlockTxn
-            | Operation::BeginBuildCoinbaseTxOutputs => true,
+            | Operation::BeginBuildCoinbaseTxOutputs
+            | Operation::BeginPrefillTransactions => true,
             // Exhaustive match to fail when new ops are added
             Operation::Nop { .. }
             | Operation::LoadBytes(_)
@@ -513,6 +520,8 @@ impl Operation {
             | Operation::AddTxoToFilter
             | Operation::BuildFilterAddFromTx
             | Operation::BuildFilterAddFromTxo
+            | Operation::AddPrefillTx
+            | Operation::EndPrefillTransactions
             | Operation::BuildCompactBlock
             | Operation::LoadNonce(..)
             | Operation::AddTxToBlockTxn
@@ -609,6 +618,10 @@ impl Operation {
                     Operation::EndBuildCoinbaseTxOutputs
                 )
                 | (Operation::BeginBuildBlockTxn, Operation::EndBuildBlockTxn)
+                | (
+                    Operation::BeginPrefillTransactions,
+                    Operation::EndPrefillTransactions
+                )
         )
     }
 
@@ -626,7 +639,8 @@ impl Operation {
             | Operation::EndBuildFilterLoad
             | Operation::EndBuildCoinbaseTx
             | Operation::EndBuildBlockTxn
-            | Operation::EndBuildCoinbaseTxOutputs => true,
+            | Operation::EndBuildCoinbaseTxOutputs
+            | Operation::EndPrefillTransactions => true,
             // Exhaustive match to fail when new ops are added
             Operation::Nop { .. }
             | Operation::LoadBytes(_)
@@ -715,6 +729,8 @@ impl Operation {
             | Operation::AddTxoToFilter
             | Operation::BuildFilterAddFromTx
             | Operation::BuildFilterAddFromTxo
+            | Operation::BeginPrefillTransactions
+            | Operation::AddPrefillTx
             | Operation::BuildCompactBlock
             | Operation::SendFilterLoad
             | Operation::SendFilterAdd
@@ -835,6 +851,9 @@ impl Operation {
             Operation::AddTxoToFilter => vec![],
             Operation::EndBuildFilterLoad => vec![Variable::ConstFilterLoad],
 
+            Operation::BeginPrefillTransactions => vec![],
+            Operation::AddPrefillTx => vec![],
+            Operation::EndPrefillTransactions => vec![Variable::ConstPrefillTransactions],
             Operation::BuildCompactBlock => vec![Variable::CompactBlock],
 
             Operation::BuildFilterAddFromTx => vec![Variable::FilterAdd],
@@ -1032,7 +1051,17 @@ impl Operation {
             Operation::BuildFilterAddFromTx => vec![Variable::ConstTx],
             Operation::BuildFilterAddFromTxo => vec![Variable::Txo],
 
-            Operation::BuildCompactBlock => vec![Variable::Block, Variable::Nonce],
+            Operation::AddPrefillTx => vec![
+                Variable::MutPrefillTransactions,
+                Variable::Block,
+                Variable::ConstTx,
+            ],
+            Operation::EndPrefillTransactions => vec![Variable::MutPrefillTransactions],
+            Operation::BuildCompactBlock => vec![
+                Variable::Block,
+                Variable::Nonce,
+                Variable::ConstPrefillTransactions,
+            ],
 
             Operation::SendFilterLoad => vec![Variable::Connection, Variable::ConstFilterLoad],
             Operation::SendFilterAdd => vec![Variable::Connection, Variable::FilterAdd],
@@ -1076,6 +1105,7 @@ impl Operation {
             | Operation::BeginBuildAddrListV2
             | Operation::BeginBlockTransactions
             | Operation::BeginWitnessStack
+            | Operation::BeginPrefillTransactions
             | Operation::BuildPayToAnchor
             | Operation::Probe => vec![],
         }
@@ -1097,6 +1127,7 @@ impl Operation {
             Operation::BeginBuildCoinbaseTx => vec![Variable::MutTx],
             Operation::BeginBuildCoinbaseTxOutputs => vec![Variable::MutTxOutputs],
             Operation::BeginBuildBlockTxn => vec![Variable::MutBlockTxn],
+            Operation::BeginPrefillTransactions => vec![Variable::MutPrefillTransactions],
             Operation::Nop {
                 outputs: _,
                 inner_outputs,
@@ -1147,6 +1178,8 @@ impl Operation {
             | Operation::LoadFilterLoad { .. }
             | Operation::LoadFilterAdd { .. }
             | Operation::LoadNonce(..)
+            | Operation::AddPrefillTx
+            | Operation::EndPrefillTransactions
             | Operation::BuildCompactBlock
             | Operation::TaprootScriptsUseAnnex
             | Operation::TaprootTxoUseAnnex
