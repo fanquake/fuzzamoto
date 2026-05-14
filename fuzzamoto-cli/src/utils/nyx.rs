@@ -109,11 +109,10 @@ pub fn create_nyx_script(
     #[cfg(not(feature = "nyx_log"))]
     let secondary_log = "";
 
-    let asan_options = format!("ASAN_OPTIONS={}", asan_options);
-    let crash_handler_preload = format!("LD_PRELOAD=./{}", crash_handler_name);
+    let asan_options = format!("ASAN_OPTIONS={asan_options}");
+    let crash_handler_preload = format!("LD_PRELOAD=./{crash_handler_name}");
     let proxy_script = format!(
-        "{} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {} ./bitcoind \\$@{}",
-        asan_options, crash_handler_preload, primary_log
+        "{asan_options} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {crash_handler_preload} ./bitcoind \\$@{primary_log}",
     );
 
     script.push("echo \"#!/bin/sh\" > ./bitcoind_proxy".to_string());
@@ -122,13 +121,11 @@ pub fn create_nyx_script(
 
     let secondary_arg = if let Some(secondary_bitcoind) = secondary_bitcoind {
         let secondary_proxy_script = format!(
-            "{} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {} ./{} \\$@{}",
-            asan_options, crash_handler_preload, secondary_bitcoind, secondary_log
+            "{asan_options} LD_LIBRARY_PATH=/tmp LD_BIND_NOW=1 {crash_handler_preload} ./{secondary_bitcoind} \\$@{secondary_log}",
         );
         script.push("echo \"#!/bin/sh\" > ./bitcoind2_proxy".to_string());
         script.push(format!(
-            "echo \"{}\" >> ./bitcoind2_proxy",
-            secondary_proxy_script
+            "echo \"{secondary_proxy_script}\" >> ./bitcoind2_proxy"
         ));
         script.push("chmod +x ./bitcoind2_proxy".to_string());
         "./bitcoind2_proxy"
