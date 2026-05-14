@@ -66,6 +66,8 @@ impl BitcoinCoreTarget {
             "-par=4",
             "-rpcthreads=4",
             "-deprecatedrpc=create_bdb",
+            "-deprecatedrpc=fullrbf",
+            "-deprecatedrpc=bip125",
             "-keypool=10",
             "-listenonion=0",
             "-i2pacceptincoming=0",
