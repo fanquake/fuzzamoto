@@ -483,6 +483,45 @@ pub fn probe_recent_block_hashes<T: HasBlockChainInterface>(
     Some(ProbeResult::RecentBlockes { result })
 }
 
+#[cfg(feature = "nyx_log")]
+const PRIMARY_LOG: &str = "/tmp/primary.log";
+#[cfg(feature = "nyx_log")]
+const PRIMARY_LOG_DUMP_NAME: &str = "primary.log";
+#[cfg(all(
+    feature = "nyx_log",
+    any(feature = "oracle_netsplit", feature = "oracle_consensus")
+))]
+const SECONDARY_LOG: &str = "/tmp/secondary.log";
+#[cfg(all(
+    feature = "nyx_log",
+    any(feature = "oracle_netsplit", feature = "oracle_consensus")
+))]
+const SECONDARY_LOG_DUMP_NAME: &str = "secondary.log";
+
+#[cfg(feature = "nyx_log")]
+fn dump_file_to_host(path: &str, dump_name: &str) {
+    if let Ok(data) = std::fs::read(path) {
+        unsafe {
+            nyx_dump_file_to_host(
+                dump_name.as_ptr() as *const i8,
+                dump_name.len(),
+                data.as_ptr(),
+                data.len(),
+            );
+        }
+    }
+}
+
+#[cfg(feature = "nyx_log")]
+fn dump_log_to_host() {
+    dump_file_to_host(PRIMARY_LOG, PRIMARY_LOG_DUMP_NAME);
+
+    #[cfg(any(feature = "oracle_netsplit", feature = "oracle_consensus"))]
+    {
+        dump_file_to_host(SECONDARY_LOG, SECONDARY_LOG_DUMP_NAME);
+    }
+}
+
 impl<TX, T> Scenario<'_, TestCase> for IrScenario<TX, T>
 where
     TX: Transport,
@@ -527,7 +566,12 @@ where
         }
 
         self.print_received();
-        self.evaluate_oracles()
+        let res = self.evaluate_oracles();
+
+        #[cfg(feature = "nyx_log")]
+        dump_log_to_host();
+
+        res
     }
 }
 
