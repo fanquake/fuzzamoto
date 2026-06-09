@@ -1789,12 +1789,16 @@ impl Compiler {
                 });
             }
             Operation::AddPrefillTx => {
-                let block = self
-                    .get_input::<bitcoin::Block>(&instruction.inputs, 1)?
-                    .clone();
-                let tx_to_prefill = self.get_input::<Tx>(&instruction.inputs, 2)?;
-                let tx_to_prefill_id = tx_to_prefill.id;
+                let prefill_len = self
+                    .get_input::<PrefillTransactions>(&instruction.inputs, 0)?
+                    .indices
+                    .len();
+                let block = self.get_input::<bitcoin::Block>(&instruction.inputs, 1)?;
+                if prefill_len >= block.txdata.len().saturating_sub(1) {
+                    return Ok(());
+                }
 
+                let tx_to_prefill_id = self.get_input::<Tx>(&instruction.inputs, 2)?.id;
                 // Find the position of this tx within the block's non-coinbase transactions.
                 // If the tx is not part of this block, skip it silently.
                 let Some(position) = block.txdata[1..]
