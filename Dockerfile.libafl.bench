@@ -1,0 +1,15 @@
+# Bakes a specific fuzzamoto-libafl build (and the Nyx share dir) on top of the base
+# libafl image, so benchmark campaigns run the prebuilt binary instead of recompiling.
+#
+# The base image (Bitcoin Core + AFL++ + toolchain) is version-independent and built once
+# by the benchmark pipeline's build-base job; only this thin layer differs per fuzzer
+# version. Used by .github/workflows/benchmark.yml.
+ARG BASE_IMAGE=fuzzamoto-libafl:bench
+FROM ${BASE_IMAGE}
+
+# Bring in the fuzzer source for the version under test (the build context is a checkout
+# of that ref) and compile it once here, plus initialise the Nyx share dir.
+COPY . /fuzzamoto
+WORKDIR /fuzzamoto
+RUN git config --global --add safe.directory /fuzzamoto
+RUN just -f /ci/libafl.justfile compile_bench nyx_init
