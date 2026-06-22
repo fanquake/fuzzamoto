@@ -3,9 +3,9 @@
 fuzzamoto-libafl A/B Benchmark Evaluation Script
 
 Performs a rigorous statistical comparison of two fuzzer versions (a baseline and a
-treatment, e.g. a PR vs its base branch), inspired by the framework from Klees et al.
+experiment, e.g. a PR vs its base branch), inspired by the framework from Klees et al.
 (2018). Each version is run N times for a fixed duration; this script aggregates those
-runs and reports whether the treatment meaningfully changes coverage / exploration speed.
+runs and reports whether the experiment meaningfully changes coverage / exploration speed.
 
 This is a port of the smite evaluation script
 (https://github.com/Chand-ra/smite/blob/master/scripts/smite-evaluation.py): all of the
@@ -39,7 +39,7 @@ Expected directory structure:
     │       │   └── bench-cpu_001.csv ...
     │       ├── 2/ ...
     │       └── ...                # any number of trials (automatically counted)
-    └── treatment/                # config B
+    └── experiment/                # config B
         └── ir/
             ├── 1/ ...
             └── ...
@@ -53,7 +53,7 @@ Output (written to --out, default <root_dir>/results):
     - <target>_time_series.png   median coverage over time with IQR bands
 
 Usage:
-    python benchmark-evaluation.py <root_dir> [--baseline baseline] [--treatment treatment]
+    python benchmark-evaluation.py <root_dir> [--baseline baseline] [--experiment experiment]
                                    [--out <dir>] [--hours <hours>]
 
 Examples:
@@ -103,10 +103,10 @@ def validate_and_find_data(root_dir, config_a, config_b):
         )
     if not os.path.isdir(path_b):
         raise FileNotFoundError(
-            f"Treatment configuration directory '{config_b}' not found in {root_dir}"
+            f"Experiment configuration directory '{config_b}' not found in {root_dir}"
         )
 
-    print(f"[*] Configurations: Baseline (A) = {config_a}, Treatment (B) = {config_b}")
+    print(f"[*] Configurations: Baseline (A) = {config_a}, Experiment (B) = {config_b}")
 
     # Find targets
     targets_a = {d for d in os.listdir(path_a) if os.path.isdir(os.path.join(path_a, d))}
@@ -339,54 +339,78 @@ def generate_plots(
 def write_evaluation_report(report_path, df_results, config_a, config_b, targets):
     """Writes the final comprehensive Markdown evaluation report."""
 
-    # Order columns for clean Markdown display
-    view_cols = [
-        "Target",
-        "Duration (h)",
-        "n (Baseline)",
-        "n (Treat.)",
-        "Median Cov. (Baseline)",
-        "Median Cov. (Treat.)",
-        "Adj. p-value (Cov.)",
-        "Â12 (Cov.)",
-        "Median AUC (Baseline)",
-        "Median AUC (Treat.)",
-        "Adj. p-value (AUC)",
-        "Â12 (AUC)",
-        "Execs/s (Baseline)",
-        "Execs/s (Treat.)",
-        "Crashes (Baseline)",
-        "Crashes (Treat.)",
-    ]
-    df_results_view = df_results[view_cols]
+    def fmt(x, nd=3):
+        """Format a numeric cell to nd decimals; pass non-numerics through unchanged."""
+        if isinstance(x, bool):
+            return str(x)
+        if isinstance(x, (int, float, np.floating, np.integer)):
+            return f"{float(x):.{nd}f}"
+        return str(x)
 
     with open(report_path, "w") as f:
         f.write("# Fuzzing Evaluation Report\n\n")
         f.write(f"**Configuration A (Baseline):** `{config_a}`\n")
-        f.write(f"**Configuration B (Treatment):** `{config_b}`\n\n")
+        f.write(f"**Configuration B (Experiment):** `{config_b}`\n\n")
 
         f.write("## 1. Summary Statistics\n\n")
-        pd.set_option("display.float_format", lambda x: "%.3f" % x)
-        f.write(df_results_view.to_markdown(index=False))
+        # A benchmark covers a single target, so a one-row-by-many-columns table reads
+        # poorly. Present each target's metrics transposed, as a Baseline vs. Experiment
+        # table, with the experiment-vs-baseline statistics in a second small table.
+        for _, row in df_results.iterrows():
+            if len(df_results) > 1:
+                f.write(f"### {row['Target']}\n\n")
+            f.write(
+                f"Evaluation window: **{fmt(row['Duration (h)'])} h** · "
+                f"trials: **{int(row['n (Baseline)'])}** baseline / "
+                f"**{int(row['n (Exp.)'])}** experiment\n\n"
+            )
+
+            f.write("| Metric | Baseline | Experiment |\n")
+            f.write("|---|---:|---:|\n")
+            f.write(
+                f"| Median final coverage (%) | {fmt(row['Median Cov. (Baseline)'])} "
+                f"| {fmt(row['Median Cov. (Exp.)'])} |\n"
+            )
+            f.write(
+                f"| Median AUC (coverage·h) | {fmt(row['Median AUC (Baseline)'])} "
+                f"| {fmt(row['Median AUC (Exp.)'])} |\n"
+            )
+            f.write(
+                f"| Median execs/s | {fmt(row['Execs/s (Baseline)'])} "
+                f"| {fmt(row['Execs/s (Exp.)'])} |\n"
+            )
+            f.write(
+                f"| Crashes (total) | {int(row['Crashes (Baseline)'])} "
+                f"| {int(row['Crashes (Exp.)'])} |\n\n"
+            )
+
+            f.write("Experiment vs. baseline comparison:\n\n")
+            f.write("| Statistic | Coverage | AUC (speed) |\n")
+            f.write("|---|---:|---:|\n")
+            f.write(
+                f"| Adj. p-value | {fmt(row['Adj. p-value (Cov.)'])} "
+                f"| {fmt(row['Adj. p-value (AUC)'])} |\n"
+            )
+            f.write(f"| Â12 | {fmt(row['Â12 (Cov.)'])} | {fmt(row['Â12 (AUC)'])} |\n\n")
+
         f.write(
-            "\n\n*A comprehensive version of this table including raw P-values and "
-            "Interquartile Ranges (IQRs) is available in `evaluation_metrics.csv`.*\n\n"
+            "*Raw P-values and Interquartile Ranges (IQRs) are available in "
+            "`evaluation_metrics.csv`.*\n\n"
         )
 
         f.write("## 2. Interpretation Guide\n\n")
         f.write(
-            "Use the matrix above to objectively evaluate the treatment configuration. "
-            "For full methodology, see the [Smite Fuzzing Evaluation Framework]"
-            "(https://github.com/morehouse/smite/issues/115).\n\n"
+            "Use the comparison table above to objectively evaluate the experiment "
+            "configuration.\n\n"
         )
 
         f.write("### Key Metrics\n\n")
         f.write(
-            "- **`Adj. p-value`**: Mann-Whitney U test corrected for multiple targets via "
-            "Holm-Bonferroni. Controls false-positive rate to ≤ 5% across all targets.\n"
+            "- **`Adj. p-value`**: Mann-Whitney U test (Holm-Bonferroni adjusted). "
+            "A value < 0.05 means the difference is unlikely to be noise.\n"
         )
         f.write(
-            "- **`Â12`**: Probability that a random B (treatment) trial outperforms a random "
+            "- **`Â12`**: Probability that a random B (experiment) trial outperforms a random "
             "A (baseline) trial. `0.5` = no difference; `0.7` = B wins 70% of pairings. "
             "Always read alongside the p-value.\n"
         )
@@ -561,23 +585,23 @@ def process_data(
                 "Target": target,
                 "Duration (h)": eval_hours,
                 "n (Baseline)": n_a,
-                "n (Treat.)": n_b,
+                "n (Exp.)": n_b,
                 "Median Cov. (Baseline)": np.median(cov_a),
-                "Median Cov. (Treat.)": np.median(cov_b),
+                "Median Cov. (Exp.)": np.median(cov_b),
                 "IQR Cov. (Baseline)": stats.iqr(cov_a),
-                "IQR Cov. (Treat.)": stats.iqr(cov_b),
+                "IQR Cov. (Exp.)": stats.iqr(cov_b),
                 "Raw p-value (Cov.)": p_raw_cov,
                 "Â12 (Cov.)": a12_cov,
                 "Median AUC (Baseline)": np.median(auc_a),
-                "Median AUC (Treat.)": np.median(auc_b),
+                "Median AUC (Exp.)": np.median(auc_b),
                 "IQR AUC (Baseline)": stats.iqr(auc_a),
-                "IQR AUC (Treat.)": stats.iqr(auc_b),
+                "IQR AUC (Exp.)": stats.iqr(auc_b),
                 "Raw p-value (AUC)": p_raw_auc,
                 "Â12 (AUC)": a12_auc,
                 "Execs/s (Baseline)": np.median(target_data[config_a]["execs"]),
-                "Execs/s (Treat.)": np.median(target_data[config_b]["execs"]),
+                "Execs/s (Exp.)": np.median(target_data[config_b]["execs"]),
                 "Crashes (Baseline)": int(np.sum(target_data[config_a]["crashes"])),
-                "Crashes (Treat.)": int(np.sum(target_data[config_b]["crashes"])),
+                "Crashes (Exp.)": int(np.sum(target_data[config_b]["crashes"])),
             }
         )
 
@@ -637,7 +661,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "root_dir",
         type=str,
-        help="Path to the evaluation root directory (contains the baseline/treatment subdirs).",
+        help="Path to the evaluation root directory (contains the baseline/experiment subdirs).",
     )
     parser.add_argument(
         "--baseline",
@@ -646,10 +670,10 @@ if __name__ == "__main__":
         help="Name of the baseline configuration directory (default: 'baseline').",
     )
     parser.add_argument(
-        "--treatment",
+        "--experiment",
         type=str,
-        default="treatment",
-        help="Name of the treatment configuration directory (default: 'treatment').",
+        default="experiment",
+        help="Name of the experiment configuration directory (default: 'experiment').",
     )
     parser.add_argument(
         "--out",
@@ -667,10 +691,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     out_dir = args.out if args.out is not None else os.path.join(args.root_dir, "results")
 
-    tgts, data = validate_and_find_data(args.root_dir, args.baseline, args.treatment)
+    tgts, data = validate_and_find_data(args.root_dir, args.baseline, args.experiment)
     process_data(
         args.baseline,
-        args.treatment,
+        args.experiment,
         tgts,
         data,
         out_dir,
