@@ -4,15 +4,20 @@ name: Benchmark
 # duration in parallel, then aggregate and statistically compare the campaigns.
 #
 # Build stages (so campaigns never recompile - 2 builds total instead of 2*N):
-#   - build-base:   the version-independent base image (Bitcoin Core + AFL++ + toolchain).
-#   - build-fuzzer: per version, bakes that ref's compiled fuzzer + Nyx share dir on top
-#     of the base (Dockerfile.libafl.bench), cached per version.
+#   - build-base:   builds the version-independent base image (Bitcoin Core + AFL++ +
+#     toolchain) and pushes it to the runs-on ephemeral ECR registry, tagged by the hash
+#     of its build inputs so it is reused across runs AND branches (ECR is org-shared,
+#     unlike branch-scoped gha cache - which is why the base used to rebuild every PR).
+#   - build-fuzzer: per version, FROM the base, bakes that ref's compiled fuzzer + Nyx
+#     share dir (Dockerfile.libafl.bench) and pushes a per-version image to ECR.
+#   - campaign: just `docker pull`s its per-version image - no build, no recompile.
 # Bitcoin Core (the target) is identical across both arms, so the comparison isolates the
 # fuzzer change. See ci/benchmark-evaluation.py for the metrics.
 #
-# Runner specs are inlined in each job's `runs-on:` label (runs-on.com syntax); there is
-# no .github/runs-on.yml. Campaign runners are pinned to a single exact instance type so
-# every campaign runs on identical hardware (see the campaign job).
+# Requires the runs-on stack's Ephemeral Registry feature (the `ecr-cache` extra auto-logs
+# the runner into ECR before each job). Runner specs are inlined in each job's `runs-on:`
+# label (runs-on.com syntax); there is no .github/runs-on.yml. Campaign runners are pinned
+# to a single exact instance type so every campaign runs on identical hardware.
 #
 # Triggers:
 #   - workflow_dispatch: compare two arbitrary refs (full control over N / duration).
@@ -25,8 +30,8 @@ on:
       baseline_ref:
         description: "Baseline fuzzamoto git ref"
         default: "master"
-      treatment_ref:
-        description: "Treatment fuzzamoto git ref"
+      experiment_ref:
+        description: "Experiment fuzzamoto git ref"
         required: true
       runs:
         description: "Campaigns per version (N)"
@@ -39,8 +44,10 @@ on:
     types: [labeled]
 
 permissions:
-  contents: read
-  pull-requests: write # for the PR comment
+  contents: read # read-only: this workflow runs untrusted fork PR code, so it must not
+  # hold a write token. The PR comment is posted by the separate benchmark-comment.yml,
+  # which triggers on workflow_run in the trusted base-repo context (GitHub's recommended
+  # pattern for commenting on fork PRs).
 
 jobs:
   setup:
@@ -53,7 +60,7 @@ jobs:
       - extras=s3-cache
     outputs:
       baseline: ${{ steps.refs.outputs.baseline }}
-      treatment: ${{ steps.refs.outputs.treatment }}
+      experiment: ${{ steps.refs.outputs.experiment }}
       duration: ${{ steps.refs.outputs.duration }}
       runs_json: ${{ steps.refs.outputs.runs_json }} # e.g. "[1,2,...,10]"
       spot: ${{ steps.refs.outputs.spot }} # true for smoke tests, false for real benchmarks
@@ -65,7 +72,7 @@ jobs:
           SPOT=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "baseline=${{ github.event.pull_request.base.sha }}"  >> "$GITHUB_OUTPUT"
-            echo "treatment=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "experiment=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
             if [ "${{ github.event.label.name }}" = "needs benchmark smoke" ]; then
               N=2
               echo "duration=300" >> "$GITHUB_OUTPUT"
@@ -76,7 +83,7 @@ jobs:
             fi
           else
             echo "baseline=${{ inputs.baseline_ref }}"   >> "$GITHUB_OUTPUT"
-            echo "treatment=${{ inputs.treatment_ref }}" >> "$GITHUB_OUTPUT"
+            echo "experiment=${{ inputs.experiment_ref }}" >> "$GITHUB_OUTPUT"
             N=${{ inputs.runs }}
             echo "duration=${{ inputs.duration_secs }}" >> "$GITHUB_OUTPUT"
           fi
@@ -85,71 +92,70 @@ jobs:
 
   build-base:
     needs: setup
-    # Fat instance to build the version-independent base image (Bitcoin Core + AFL++ + deps).
+    # Build the version-independent base image (Bitcoin Core + AFL++ + deps) and push it to
+    # ECR, tagged by the hash of its build inputs so it is reused across runs and branches.
+    # The registry build cache keeps re-runs fast when those inputs are unchanged.
     runs-on:
       - runs-on=${{ github.run_id }}
       - cpu=16+32
       - family=c7i+m7i+c7a
       - image=ubuntu22-full-x64
       - volume=120gb:gp3
-      - extras=s3-cache # S3-backed docker layer cache (no 10GB cap)
+      - extras=ecr-cache # auto-login to the ephemeral ECR registry
       - spot=true
+    outputs:
+      base_image: ${{ steps.meta.outputs.base_image }}
     steps:
       - uses: actions/checkout@v4 # Bitcoin Core build is version-independent
+      - id: meta
+        # Content-addressed tag: rebuilt only when the base build inputs actually change.
+        run: echo "base_image=${{ env.RUNS_ON_ECR_CACHE }}:base-${{ hashFiles('Dockerfile.libafl', 'target-patches/**', 'ci/**') }}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-      - name: Build & cache the base image
+      - name: Build & push the base image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.libafl
-          push: false
-          tags: fuzzamoto-libafl:bench
+          push: true
+          tags: ${{ steps.meta.outputs.base_image }}
           platforms: linux/amd64
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,scope=base,mode=max
+          cache-from: type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:base-buildcache
+          cache-to: type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:base-buildcache,mode=max
 
   build-fuzzer:
     needs: [setup, build-base]
-    # Bake each fuzzer version (compiled binary + Nyx share dir) once, cached per version,
-    # so the campaign jobs reuse it instead of recompiling. Only compiles the fuzzamoto
-    # crates (the heavy base is already built), so 8 CPUs is plenty and spot is fine - a
-    # reclaim mid-bake just retries and resumes from the layer cache.
+    # Bake each fuzzer version (compiled binary + Nyx share dir) FROM the base image and push
+    # a per-version image to ECR, so campaigns just pull it. Only compiles the fuzzamoto
+    # crates (the heavy base is prebuilt), so 8 CPUs is plenty and spot is fine - a reclaim
+    # mid-bake just retries and resumes from the registry build cache.
     runs-on:
       - runs-on=${{ github.run_id }}
       - cpu=8
       - family=c7i+m7i+c7a
       - image=ubuntu22-full-x64
       - volume=120gb:gp3
-      - extras=s3-cache
+      - extras=ecr-cache
       - spot=true
       - retry=when-interrupted
     strategy:
       matrix:
-        version: [baseline, treatment]
+        version: [baseline, experiment]
     steps:
       - name: Checkout fuzzer version to bake
         uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.version == 'baseline' && needs.setup.outputs.baseline || needs.setup.outputs.treatment }}
+          ref: ${{ matrix.version == 'baseline' && needs.setup.outputs.baseline || needs.setup.outputs.experiment }}
       - uses: docker/setup-buildx-action@v3
-      - name: Materialize base image from cache
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.libafl
-          load: true
-          tags: fuzzamoto-libafl:bench
-          cache-from: type=gha,scope=base
-      - name: Build & cache the per-version fuzzer image
+      - name: Build & push the per-version fuzzer image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.libafl.bench
-          build-args: BASE_IMAGE=fuzzamoto-libafl:bench
-          push: false
-          tags: fuzzamoto-libafl:bench-${{ matrix.version }}
-          cache-from: type=gha,scope=bench-${{ matrix.version }}
-          cache-to: type=gha,scope=bench-${{ matrix.version }},mode=max
+          build-args: BASE_IMAGE=${{ needs.build-base.outputs.base_image }}
+          push: true
+          tags: ${{ env.RUNS_ON_ECR_CACHE }}:bench-${{ github.run_id }}-${{ matrix.version }}
+          cache-from: type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:bench-${{ matrix.version }}-buildcache
+          cache-to: type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:bench-${{ matrix.version }}-buildcache,mode=max
 
   campaign:
     needs: [setup, build-fuzzer]
@@ -164,37 +170,18 @@ jobs:
       - image=ubuntu22-full-x64
       - nested-virt
       - volume=80gb:gp3
-      - extras=s3-cache
+      - extras=ecr-cache
       - spot=${{ needs.setup.outputs.spot }}
-    timeout-minutes: 90 # 60m campaign + image-restore headroom
+    timeout-minutes: 90 # 60m campaign + image-pull headroom
     strategy:
       fail-fast: false # a dead campaign must not cancel the others
       matrix:
-        version: [baseline, treatment]
+        version: [baseline, experiment]
         run: ${{ fromJSON(needs.setup.outputs.runs_json) }}
     steps:
-      - name: Checkout fuzzer version under test
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ matrix.version == 'baseline' && needs.setup.outputs.baseline || needs.setup.outputs.treatment }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Materialize base image from cache
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.libafl
-          load: true
-          tags: fuzzamoto-libafl:bench
-          cache-from: type=gha,scope=base
-      - name: Restore prebuilt fuzzer image from cache
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.libafl.bench
-          build-args: BASE_IMAGE=fuzzamoto-libafl:bench
-          load: true
-          tags: fuzzamoto-libafl:bench-${{ matrix.version }}
-          cache-from: type=gha,scope=bench-${{ matrix.version }} # cache hit incl. compile
+      - name: Pull prebuilt fuzzer image
+        # $RUNS_ON_ECR_CACHE is exported into the step env by the runs-on pre-job hook.
+        run: docker pull "$RUNS_ON_ECR_CACHE:bench-${{ github.run_id }}-${{ matrix.version }}"
       - name: Enable KVM vmware backdoor (required by Nyx)
         run: |
           sudo modprobe -r kvm_intel 2>/dev/null || true
@@ -212,7 +199,8 @@ jobs:
           docker run --privileged \
             -e BENCH_DURATION=${{ needs.setup.outputs.duration }} \
             -v /tmp/out:/tmp/out \
-            fuzzamoto-libafl:bench-${{ matrix.version }} just -f /ci/libafl.justfile bench_run
+            "$RUNS_ON_ECR_CACHE:bench-${{ github.run_id }}-${{ matrix.version }}" \
+            just -f /ci/libafl.justfile bench_run
       - name: Collect results
         run: |
           mkdir -p artifact
@@ -240,23 +228,22 @@ jobs:
       - cpu=2+4
       - family=m7i+c7i
       - image=ubuntu22-full-x64
-      - extras=s3-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: bench-*
           path: dl
-      - name: Arrange into baseline/treatment layout
+      - name: Arrange into baseline/experiment layout
         run: |
           shopt -s nullglob
           for d in dl/bench-baseline-*; do
             n=${d##*-}; mkdir -p results/baseline/ir/$n
             cp "$d"/bench-cpu_*.csv results/baseline/ir/$n/ 2>/dev/null || true
           done
-          for d in dl/bench-treatment-*; do
-            n=${d##*-}; mkdir -p results/treatment/ir/$n
-            cp "$d"/bench-cpu_*.csv results/treatment/ir/$n/ 2>/dev/null || true
+          for d in dl/bench-experiment-*; do
+            n=${d##*-}; mkdir -p results/experiment/ir/$n
+            cp "$d"/bench-cpu_*.csv results/experiment/ir/$n/ 2>/dev/null || true
           done
       - name: Install evaluation dependencies
         run: pip install numpy pandas matplotlib seaborn scipy statsmodels tabulate
@@ -266,7 +253,7 @@ jobs:
           {
             echo "## fuzzamoto-libafl benchmark"
             echo
-            echo "Baseline: \`${{ needs.setup.outputs.baseline }}\`  •  Treatment: \`${{ needs.setup.outputs.treatment }}\`"
+            echo "Baseline: \`${{ needs.setup.outputs.baseline }}\`  •  Experiment: \`${{ needs.setup.outputs.experiment }}\`"
             echo
             cat report/evaluation_report.md
           } >> "$GITHUB_STEP_SUMMARY"
@@ -275,15 +262,17 @@ jobs:
           name: benchmark-report
           path: report
           retention-days: 90
-      - name: Comment on PR
+      - name: Save PR number for the comment workflow
+        # Fork PRs carry an empty workflow_run.pull_requests, so the trusted comment
+        # workflow can't recover the PR number from the event - we stash it here and it
+        # reads it back from this artifact.
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        run: |
+          mkdir -p pr
+          echo "${{ github.event.pull_request.number }}" > pr/pr-number.txt
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
         with:
-          script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('report/evaluation_report.md', 'utf8');
-            await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: context.issue.number,
-              body,
-            });
+          name: pr-number
+          path: pr
+          retention-days: 14

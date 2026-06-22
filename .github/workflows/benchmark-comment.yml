@@ -1,0 +1,58 @@
+name: Benchmark comment
+
+# Posts the benchmark report as a PR comment.
+#
+# Why this is a separate workflow: the Benchmark workflow runs untrusted fork-PR code, so it
+# is read-only and holds no write token. This workflow triggers on workflow_run (after that
+# Benchmark run completes) and therefore runs in the trusted BASE-repo context with a write
+# token - but it executes no PR code. It only downloads the artifacts the Benchmark run left
+# behind (the rendered report + the PR number) and posts the comment. This is GitHub's
+# recommended secure pattern for commenting on fork PRs ("pwn request" mitigation).
+#
+# Caveats:
+#   - This file must exist on the default branch (master) for the workflow_run trigger to fire.
+#   - Fork PRs carry an empty workflow_run.pull_requests, so the PR number is read from the
+#     `pr-number` artifact rather than from the event payload.
+
+on:
+  workflow_run:
+    workflows: ["Benchmark"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read # to download artifacts from the triggering run
+  pull-requests: write # to post the comment
+
+jobs:
+  comment:
+    # Only comment for runs that actually came from a pull_request (skip workflow_dispatch).
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download benchmark report
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-report
+          path: report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download PR number
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-number
+          path: pr
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const issue_number = parseInt(fs.readFileSync('pr/pr-number.txt', 'utf8').trim(), 10);
+            const body = fs.readFileSync('report/evaluation_report.md', 'utf8');
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number,
+              body,
+            });
