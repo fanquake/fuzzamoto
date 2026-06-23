@@ -47,6 +47,8 @@ Expected directory structure:
 Output (written to --out, default <root_dir>/results):
     - evaluation_report.md   detailed Markdown report with summary stats, adjusted
                              p-values, effect sizes, an interpretation guide and plots
+    - pr_comment.md          summary-only variant posted as the PR comment (the comment
+                             workflow appends a link to the full-report artifact)
     - evaluation_metrics.csv full data table (raw p-values, IQRs, medians)
     - <target>_boxplot.png       box plots of final coverage distributions
     - <target>_auc_boxplot.png   box plots of AUC (exploration speed) distributions
@@ -336,153 +338,179 @@ def generate_plots(
     plt.close()
 
 
-def write_evaluation_report(report_path, df_results, config_a, config_b, targets):
-    """Writes the final comprehensive Markdown evaluation report."""
-
-    def fmt(x, nd=3):
-        """Format a numeric cell to nd decimals; pass non-numerics through unchanged."""
-        if isinstance(x, bool):
-            return str(x)
-        if isinstance(x, (int, float, np.floating, np.integer)):
-            return f"{float(x):.{nd}f}"
+def _fmt(x, nd=3):
+    """Format a numeric cell to nd decimals; pass non-numerics through unchanged."""
+    if isinstance(x, bool):
         return str(x)
+    if isinstance(x, (int, float, np.floating, np.integer)):
+        return f"{float(x):.{nd}f}"
+    return str(x)
 
+
+def _write_header(f, config_a, config_b):
+    f.write("# Fuzzing Evaluation Report\n\n")
+    f.write(f"**Configuration A (Baseline):** `{config_a}`\n")
+    f.write(f"**Configuration B (Experiment):** `{config_b}`\n\n")
+
+
+def _write_summary(f, df_results):
+    f.write("## 1. Summary Statistics\n\n")
+    # A benchmark covers a single target, so a one-row-by-many-columns table reads
+    # poorly. Present each target's metrics transposed, as a Baseline vs. Experiment
+    # table, with the experiment-vs-baseline statistics in a second small table.
+    for _, row in df_results.iterrows():
+        if len(df_results) > 1:
+            f.write(f"### {row['Target']}\n\n")
+        f.write(
+            f"Evaluation window: **{_fmt(row['Duration (h)'])} h** · "
+            f"trials: **{int(row['n (Baseline)'])}** baseline / "
+            f"**{int(row['n (Exp.)'])}** experiment\n\n"
+        )
+
+        f.write("| Metric | Baseline | Experiment |\n")
+        f.write("|---|---:|---:|\n")
+        f.write(
+            f"| Median final coverage (%) | {_fmt(row['Median Cov. (Baseline)'])} "
+            f"| {_fmt(row['Median Cov. (Exp.)'])} |\n"
+        )
+        f.write(
+            f"| Median AUC (coverage·h) | {_fmt(row['Median AUC (Baseline)'])} "
+            f"| {_fmt(row['Median AUC (Exp.)'])} |\n"
+        )
+        f.write(
+            f"| Median execs/s | {_fmt(row['Execs/s (Baseline)'])} "
+            f"| {_fmt(row['Execs/s (Exp.)'])} |\n"
+        )
+        f.write(
+            f"| Crashes (total) | {int(row['Crashes (Baseline)'])} "
+            f"| {int(row['Crashes (Exp.)'])} |\n\n"
+        )
+
+        f.write("Experiment vs. baseline comparison:\n\n")
+        f.write("| Statistic | Coverage | AUC (speed) |\n")
+        f.write("|---|---:|---:|\n")
+        f.write(
+            f"| Adj. p-value | {_fmt(row['Adj. p-value (Cov.)'])} "
+            f"| {_fmt(row['Adj. p-value (AUC)'])} |\n"
+        )
+        f.write(f"| Â12 | {_fmt(row['Â12 (Cov.)'])} | {_fmt(row['Â12 (AUC)'])} |\n\n")
+
+    f.write(
+        "*Raw P-values and Interquartile Ranges (IQRs) are available in "
+        "`evaluation_metrics.csv`.*\n\n"
+    )
+
+
+def _write_visualizations(f, targets):
+    f.write("## 2. Visualizations\n\n")
+    f.write(
+        "*Note: In the box plots below, the central box represents the Interquartile Range (IQR, "
+        "the middle 50% of trials), demonstrating the consistency of the fuzzer's performance. "
+        "The internal line represents the median.*\n\n"
+    )
+
+    # Embed images directly into the markdown report
+    for target in targets:
+        f.write(f"### Target: {target}\n\n")
+
+        f.write("#### Median Coverage Over Time\n\n")
+        f.write(f"![{target} Time Series]({target}_time_series.png)\n\n")
+
+        f.write("#### Distribution Comparisons\n\n")
+        f.write("| Final Coverage | Area Under Curve (Speed) |\n")
+        f.write("|:---:|:---:|\n")
+        f.write(
+            f"| ![{target} Boxplot]({target}_boxplot.png) | "
+            f"![{target} AUC]({target}_auc_boxplot.png) |\n\n"
+        )
+        f.write("---\n\n")
+
+
+def _write_guide(f):
+    f.write("## 3. Interpretation Guide\n\n")
+    f.write(
+        "Use the comparison table above to objectively evaluate the experiment "
+        "configuration.\n\n"
+    )
+
+    f.write("### Key Metrics\n\n")
+    f.write(
+        "- **`Adj. p-value`**: Mann-Whitney U test (Holm-Bonferroni adjusted). "
+        "A value < 0.05 means the difference is unlikely to be noise.\n"
+    )
+    f.write(
+        "- **`Â12`**: Probability that a random B (experiment) trial outperforms a random "
+        "A (baseline) trial. `0.5` = no difference; `0.7` = B wins 70% of pairings. "
+        "Always read alongside the p-value.\n"
+    )
+    f.write(
+        "- **`IQR`**: Spread of the middle 50% of trials. A much larger IQR in B suggests "
+        "a few outlier runs may be inflating the median.\n"
+    )
+    f.write(
+        "- **`AUC`**: Coverage *speed* — how much was discovered and how early. "
+        "Useful when final coverage is similar between configurations.\n"
+    )
+    f.write(
+        "- **`Execs/s`**: A large drop in B without a coverage gain means the new feature "
+        "is too expensive.\n"
+    )
+    f.write(
+        "- **`Crashes`**: Total solutions saved across trials. Non-zero counts warrant "
+        "manual inspection of the uploaded crash artifacts.\n\n"
+    )
+
+    f.write("### Reading the Results\n\n")
+    f.write("| Adj. p | `Â12` | Conclusion |\n")
+    f.write("|---|---|---|\n")
+    f.write(
+        "| < 0.05 | > 0.5 | Meaningful improvement. Check IQRs are comparable, then merge. |\n"
+    )
+    f.write(
+        "| < 0.05 | ~0.5 | Significant but negligible. Check if worth the added complexity. |\n"
+    )
+    f.write(
+        "| > 0.05 | > 0.6 | Promising but underpowered. Re-run with more trials (e.g., 50). |\n"
+    )
+    f.write(
+        "| > 0.05 | ~0.5 | No effect. Try an advanced snapshot or ground-truth evaluation. |\n"
+    )
+    f.write(
+        "| any | < 0.5 | B underperforms A. If significant, reject or redesign the feature. |\n\n"
+    )
+
+    f.write(
+        "> **Time-series caveat:** If the IQR bands overlap for most of the campaign and "
+        "only diverge near the end, treat the final-coverage result cautiously — late "
+        "divergence may reflect noise rather than a sustained advantage.\n\n"
+    )
+    f.write(
+        "> **Note:** Union coverage (the multi-core coverage ceiling) is not reported "
+        "here, as the bench CSV records a covered-edge count rather than the raw coverage "
+        "map.\n\n"
+    )
+
+
+def write_evaluation_report(report_path, df_results, config_a, config_b, targets):
+    """Writes the full Markdown evaluation report (summary + visualizations + guide)."""
     with open(report_path, "w") as f:
-        f.write("# Fuzzing Evaluation Report\n\n")
-        f.write(f"**Configuration A (Baseline):** `{config_a}`\n")
-        f.write(f"**Configuration B (Experiment):** `{config_b}`\n\n")
+        _write_header(f, config_a, config_b)
+        _write_summary(f, df_results)
+        _write_visualizations(f, targets)
+        _write_guide(f)
 
-        f.write("## 1. Summary Statistics\n\n")
-        # A benchmark covers a single target, so a one-row-by-many-columns table reads
-        # poorly. Present each target's metrics transposed, as a Baseline vs. Experiment
-        # table, with the experiment-vs-baseline statistics in a second small table.
-        for _, row in df_results.iterrows():
-            if len(df_results) > 1:
-                f.write(f"### {row['Target']}\n\n")
-            f.write(
-                f"Evaluation window: **{fmt(row['Duration (h)'])} h** · "
-                f"trials: **{int(row['n (Baseline)'])}** baseline / "
-                f"**{int(row['n (Exp.)'])}** experiment\n\n"
-            )
 
-            f.write("| Metric | Baseline | Experiment |\n")
-            f.write("|---|---:|---:|\n")
-            f.write(
-                f"| Median final coverage (%) | {fmt(row['Median Cov. (Baseline)'])} "
-                f"| {fmt(row['Median Cov. (Exp.)'])} |\n"
-            )
-            f.write(
-                f"| Median AUC (coverage·h) | {fmt(row['Median AUC (Baseline)'])} "
-                f"| {fmt(row['Median AUC (Exp.)'])} |\n"
-            )
-            f.write(
-                f"| Median execs/s | {fmt(row['Execs/s (Baseline)'])} "
-                f"| {fmt(row['Execs/s (Exp.)'])} |\n"
-            )
-            f.write(
-                f"| Crashes (total) | {int(row['Crashes (Baseline)'])} "
-                f"| {int(row['Crashes (Exp.)'])} |\n\n"
-            )
+def write_pr_comment(comment_path, df_results, config_a, config_b):
+    """Writes the trimmed PR-comment report: summary statistics only.
 
-            f.write("Experiment vs. baseline comparison:\n\n")
-            f.write("| Statistic | Coverage | AUC (speed) |\n")
-            f.write("|---|---:|---:|\n")
-            f.write(
-                f"| Adj. p-value | {fmt(row['Adj. p-value (Cov.)'])} "
-                f"| {fmt(row['Adj. p-value (AUC)'])} |\n"
-            )
-            f.write(f"| Â12 | {fmt(row['Â12 (Cov.)'])} | {fmt(row['Â12 (AUC)'])} |\n\n")
-
-        f.write(
-            "*Raw P-values and Interquartile Ranges (IQRs) are available in "
-            "`evaluation_metrics.csv`.*\n\n"
-        )
-
-        f.write("## 2. Interpretation Guide\n\n")
-        f.write(
-            "Use the comparison table above to objectively evaluate the experiment "
-            "configuration.\n\n"
-        )
-
-        f.write("### Key Metrics\n\n")
-        f.write(
-            "- **`Adj. p-value`**: Mann-Whitney U test (Holm-Bonferroni adjusted). "
-            "A value < 0.05 means the difference is unlikely to be noise.\n"
-        )
-        f.write(
-            "- **`Â12`**: Probability that a random B (experiment) trial outperforms a random "
-            "A (baseline) trial. `0.5` = no difference; `0.7` = B wins 70% of pairings. "
-            "Always read alongside the p-value.\n"
-        )
-        f.write(
-            "- **`IQR`**: Spread of the middle 50% of trials. A much larger IQR in B suggests "
-            "a few outlier runs may be inflating the median.\n"
-        )
-        f.write(
-            "- **`AUC`**: Coverage *speed* — how much was discovered and how early. "
-            "Useful when final coverage is similar between configurations.\n"
-        )
-        f.write(
-            "- **`Execs/s`**: A large drop in B without a coverage gain means the new feature "
-            "is too expensive.\n"
-        )
-        f.write(
-            "- **`Crashes`**: Total solutions saved across trials. Non-zero counts warrant "
-            "manual inspection of the uploaded crash artifacts.\n\n"
-        )
-
-        f.write("### Reading the Results\n\n")
-        f.write("| Adj. p | `Â12` | Conclusion |\n")
-        f.write("|---|---|---|\n")
-        f.write(
-            "| < 0.05 | > 0.5 | Meaningful improvement. Check IQRs are comparable, then merge. |\n"
-        )
-        f.write(
-            "| < 0.05 | ~0.5 | Significant but negligible. Check if worth the added complexity. |\n"
-        )
-        f.write(
-            "| > 0.05 | > 0.6 | Promising but underpowered. Re-run with more trials (e.g., 50). |\n"
-        )
-        f.write(
-            "| > 0.05 | ~0.5 | No effect. Try an advanced snapshot or ground-truth evaluation. |\n"
-        )
-        f.write(
-            "| any | < 0.5 | B underperforms A. If significant, reject or redesign the feature. |\n\n"
-        )
-
-        f.write(
-            "> **Time-series caveat:** If the IQR bands overlap for most of the campaign and "
-            "only diverge near the end, treat the final-coverage result cautiously — late "
-            "divergence may reflect noise rather than a sustained advantage.\n\n"
-        )
-        f.write(
-            "> **Note:** Union coverage (the multi-core coverage ceiling) is not reported "
-            "here, as the bench CSV records a covered-edge count rather than the raw coverage "
-            "map.\n\n"
-        )
-
-        f.write("## 3. Visualizations\n\n")
-        f.write(
-            "*Note: In the box plots below, the central box represents the Interquartile Range (IQR, "
-            "the middle 50% of trials), demonstrating the consistency of the fuzzer's performance. "
-            "The internal line represents the median.*\n\n"
-        )
-
-        # Embed images directly into the markdown report
-        for target in targets:
-            f.write(f"### Target: {target}\n\n")
-
-            f.write("#### Median Coverage Over Time\n\n")
-            f.write(f"![{target} Time Series]({target}_time_series.png)\n\n")
-
-            f.write("#### Distribution Comparisons\n\n")
-            f.write("| Final Coverage | Area Under Curve (Speed) |\n")
-            f.write("|:---:|:---:|\n")
-            f.write(
-                f"| ![{target} Boxplot]({target}_boxplot.png) | "
-                f"![{target} AUC]({target}_auc_boxplot.png) |\n\n"
-            )
-            f.write("---\n\n")
+    The visualizations embed images via relative paths that don't resolve in a GitHub
+    comment body, and the interpretation guide is long; both live in the full report
+    inside the downloadable artifact instead. The comment workflow appends a link to
+    that artifact.
+    """
+    with open(comment_path, "w") as f:
+        _write_header(f, config_a, config_b)
+        _write_summary(f, df_results)
 
 
 def process_data(
@@ -649,8 +677,14 @@ def process_data(
     report_path = os.path.join(results_dir, "evaluation_report.md")
     write_evaluation_report(report_path, df_results, config_a, config_b, targets)
 
+    # Summary-only variant for the PR comment (images/guide stay in the full report
+    # artifact, which the comment workflow links to).
+    comment_path = os.path.join(results_dir, "pr_comment.md")
+    write_pr_comment(comment_path, df_results, config_a, config_b)
+
     print(f"\n[*] Evaluation complete. Results saved to {results_dir}")
     print(f"    - Open {report_path} to interpret the campaign.")
+    print(f"    - PR-comment summary written to {comment_path}.")
     print(f"    - Metric data exported to {csv_path}.")
 
 

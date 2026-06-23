@@ -49,8 +49,29 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const runId = context.payload.workflow_run.id;
             const issue_number = parseInt(fs.readFileSync('pr/pr-number.txt', 'utf8').trim(), 10);
-            const body = fs.readFileSync('report/evaluation_report.md', 'utf8');
+
+            // Post only the summary; the visualizations and interpretation guide live in
+            // the full-report artifact (their images use relative paths that don't resolve
+            // in a comment body). Link to that artifact's browser download page.
+            const summary = fs.readFileSync('report/pr_comment.md', 'utf8');
+
+            const { data: { artifacts } } =
+              await github.rest.actions.listWorkflowRunArtifacts({
+                ...context.repo,
+                run_id: runId,
+              });
+            const report = artifacts.find(a => a.name === 'benchmark-report');
+            const reportLink = report
+              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${report.id}`
+              : `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+
+            const body =
+              summary +
+              `\n---\n\n📦 **[Download the full report](${reportLink})** ` +
+              `(visualizations + interpretation guide, as a zip).\n`;
+
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number,
