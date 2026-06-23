@@ -347,10 +347,10 @@ def _fmt(x, nd=3):
     return str(x)
 
 
-def _write_header(f, config_a, config_b):
+def _write_header(f, baseline_label, experiment_label):
     f.write("# Fuzzing Evaluation Report\n\n")
-    f.write(f"**Configuration A (Baseline):** `{config_a}`\n")
-    f.write(f"**Configuration B (Experiment):** `{config_b}`\n\n")
+    f.write(f"**Baseline (A):** `{baseline_label}`\n")
+    f.write(f"**Experiment (B):** `{experiment_label}`\n\n")
 
 
 def _write_summary(f, df_results):
@@ -491,16 +491,18 @@ def _write_guide(f):
     )
 
 
-def write_evaluation_report(report_path, df_results, config_a, config_b, targets):
+def write_evaluation_report(
+    report_path, df_results, baseline_label, experiment_label, targets
+):
     """Writes the full Markdown evaluation report (summary + visualizations + guide)."""
     with open(report_path, "w") as f:
-        _write_header(f, config_a, config_b)
+        _write_header(f, baseline_label, experiment_label)
         _write_summary(f, df_results)
         _write_visualizations(f, targets)
         _write_guide(f)
 
 
-def write_pr_comment(comment_path, df_results, config_a, config_b):
+def write_pr_comment(comment_path, df_results, baseline_label, experiment_label):
     """Writes the trimmed PR-comment report: summary statistics only.
 
     The visualizations embed images via relative paths that don't resolve in a GitHub
@@ -509,13 +511,25 @@ def write_pr_comment(comment_path, df_results, config_a, config_b):
     that artifact.
     """
     with open(comment_path, "w") as f:
-        _write_header(f, config_a, config_b)
+        _write_header(f, baseline_label, experiment_label)
         _write_summary(f, df_results)
 
 
 def process_data(
-    config_a, config_b, targets, data_paths, out_dir, requested_hours=None
+    config_a,
+    config_b,
+    targets,
+    data_paths,
+    out_dir,
+    requested_hours=None,
+    baseline_label=None,
+    experiment_label=None,
 ):
+    # config_a/config_b are the data-directory names (used as dict keys); the labels
+    # are what's shown in the report header. Fall back to the dir names when no
+    # human-meaningful label (e.g. a git ref) is supplied.
+    baseline_label = baseline_label or config_a
+    experiment_label = experiment_label or config_b
     """Extracts metrics, computes statistics, and generates visualizations/reports."""
     results_dir = out_dir
     os.makedirs(results_dir, exist_ok=True)
@@ -675,12 +689,14 @@ def process_data(
     df_results.to_csv(csv_path, index=False)
 
     report_path = os.path.join(results_dir, "evaluation_report.md")
-    write_evaluation_report(report_path, df_results, config_a, config_b, targets)
+    write_evaluation_report(
+        report_path, df_results, baseline_label, experiment_label, targets
+    )
 
     # Summary-only variant for the PR comment (images/guide stay in the full report
     # artifact, which the comment workflow links to).
     comment_path = os.path.join(results_dir, "pr_comment.md")
-    write_pr_comment(comment_path, df_results, config_a, config_b)
+    write_pr_comment(comment_path, df_results, baseline_label, experiment_label)
 
     print(f"\n[*] Evaluation complete. Results saved to {results_dir}")
     print(f"    - Open {report_path} to interpret the campaign.")
@@ -721,6 +737,20 @@ if __name__ == "__main__":
         default=None,
         help="Target duration in hours, or 'min' to enforce the shortest common timeframe.",
     )
+    parser.add_argument(
+        "--baseline-label",
+        type=str,
+        default=None,
+        help="Human-readable label for the baseline shown in the report header "
+        "(e.g. a git ref/SHA). Defaults to the baseline directory name.",
+    )
+    parser.add_argument(
+        "--experiment-label",
+        type=str,
+        default=None,
+        help="Human-readable label for the experiment shown in the report header "
+        "(e.g. a git ref/SHA). Defaults to the experiment directory name.",
+    )
 
     args = parser.parse_args()
     out_dir = args.out if args.out is not None else os.path.join(args.root_dir, "results")
@@ -733,4 +763,6 @@ if __name__ == "__main__":
         data,
         out_dir,
         args.hours,
+        args.baseline_label,
+        args.experiment_label,
     )

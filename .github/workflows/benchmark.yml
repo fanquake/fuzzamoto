@@ -19,26 +19,11 @@ name: Benchmark
 # label (runs-on.com syntax); there is no .github/runs-on.yml. Campaign runners are pinned
 # to a single exact instance type so every campaign runs on identical hardware.
 #
-# Triggers:
-#   - workflow_dispatch: compare two arbitrary refs (full control over N / duration).
-#   - PR label 'needs benchmark':        full run, N=10, 3600s/campaign (PR base vs head).
+# Triggers (PR labels only - the workflow always compares PR base vs head):
+#   - PR label 'needs benchmark':        full run, N=10, 3600s/campaign.
 #   - PR label 'needs benchmark smoke':  cheap wiring test, N=2, 300s/campaign.
 
 on:
-  workflow_dispatch:
-    inputs:
-      baseline_ref:
-        description: "Baseline fuzzamoto git ref"
-        default: "master"
-      experiment_ref:
-        description: "Experiment fuzzamoto git ref"
-        required: true
-      runs:
-        description: "Campaigns per version (N)"
-        default: "10"
-      duration_secs:
-        description: "Seconds per campaign"
-        default: "3600"
   pull_request:
     # Gated on the 'needs benchmark' / 'needs benchmark smoke' labels (checked in setup's `if:`).
     types: [labeled]
@@ -51,7 +36,7 @@ permissions:
 
 jobs:
   setup:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'needs benchmark' || github.event.label.name == 'needs benchmark smoke'
+    if: github.event.label.name == 'needs benchmark' || github.event.label.name == 'needs benchmark smoke'
     runs-on:
       - runs-on=${{ github.run_id }}
       - cpu=2+4
@@ -61,6 +46,11 @@ jobs:
     outputs:
       baseline: ${{ steps.refs.outputs.baseline }}
       experiment: ${{ steps.refs.outputs.experiment }}
+      # Human-readable labels for the report header. The baseline/experiment outputs
+      # above must stay checkout-able refs (used as `ref:` in build-fuzzer), so the
+      # display labels are tracked separately.
+      baseline_label: ${{ steps.refs.outputs.baseline_label }}
+      experiment_label: ${{ steps.refs.outputs.experiment_label }}
       duration: ${{ steps.refs.outputs.duration }}
       runs_json: ${{ steps.refs.outputs.runs_json }} # e.g. "[1,2,...,10]"
       spot: ${{ steps.refs.outputs.spot }} # true for smoke tests, false for real benchmarks
@@ -70,22 +60,20 @@ jobs:
           # Real benchmarks run on-demand (spot=false) so an interruption can't void a long
           # campaign; the cheap smoke test runs on spot to save money.
           SPOT=false
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "baseline=${{ github.event.pull_request.base.sha }}"  >> "$GITHUB_OUTPUT"
-            echo "experiment=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-            if [ "${{ github.event.label.name }}" = "needs benchmark smoke" ]; then
-              N=2
-              echo "duration=300" >> "$GITHUB_OUTPUT"
-              SPOT=true
-            else
-              N=10
-              echo "duration=3600" >> "$GITHUB_OUTPUT"
-            fi
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "baseline=$BASE_SHA"  >> "$GITHUB_OUTPUT"
+          echo "experiment=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          # e.g. "master (a1b2c3d4e5f6)" / "my-feature (0f1e2d3c4b5a)"
+          echo "baseline_label=${{ github.event.pull_request.base.ref }} (${BASE_SHA:0:12})"   >> "$GITHUB_OUTPUT"
+          echo "experiment_label=${{ github.event.pull_request.head.ref }} (${HEAD_SHA:0:12})" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event.label.name }}" = "needs benchmark smoke" ]; then
+            N=2
+            echo "duration=300" >> "$GITHUB_OUTPUT"
+            SPOT=true
           else
-            echo "baseline=${{ inputs.baseline_ref }}"   >> "$GITHUB_OUTPUT"
-            echo "experiment=${{ inputs.experiment_ref }}" >> "$GITHUB_OUTPUT"
-            N=${{ inputs.runs }}
-            echo "duration=${{ inputs.duration_secs }}" >> "$GITHUB_OUTPUT"
+            N=10
+            echo "duration=3600" >> "$GITHUB_OUTPUT"
           fi
           echo "spot=$SPOT" >> "$GITHUB_OUTPUT"
           echo "runs_json=$(seq -s, 1 "$N" | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
@@ -102,7 +90,7 @@ jobs:
       - image=ubuntu22-full-x64
       - volume=120gb:gp3
       - extras=ecr-cache # auto-login to the ephemeral ECR registry
-      - spot=true
+      - spot=${{ needs.setup.outputs.spot }}
     outputs:
       base_image: ${{ steps.meta.outputs.base_image }}
     steps:
@@ -135,7 +123,7 @@ jobs:
       - image=ubuntu22-full-x64
       - volume=120gb:gp3
       - extras=ecr-cache
-      - spot=true
+      - spot=${{ needs.setup.outputs.spot }}
       - retry=when-interrupted
     strategy:
       matrix:
@@ -162,11 +150,11 @@ jobs:
     # nested-virt exposes /dev/kvm (required by Nyx). IMPORTANT: pinned to a single,
     # exact instance type so every campaign (both arms, all N runs) runs on identical
     # hardware - otherwise a coverage/exec-rate delta could reflect instance variance
-    # rather than the fuzzer change. spot is false for real benchmarks (an interruption
-    # would void a long campaign) and true for the cheap smoke test (set by setup).
+    # rather than the fuzzer change. Always on-demand (spot=false) so an interruption
+    # can never void a campaign, even for the cheap smoke test.
     runs-on:
       - runs-on=${{ github.run_id }}
-      - family=c7i.2xlarge # exact type; adjust to one nested-virt type in your account
+      - family=r7i.large # exact type; adjust to one nested-virt type in your account
       - image=ubuntu22-full-x64
       - nested-virt
       - volume=80gb:gp3
@@ -249,11 +237,11 @@ jobs:
         run: pip install numpy pandas matplotlib seaborn scipy statsmodels tabulate
       - name: Evaluate
         run: |
-          python3 ci/benchmark-evaluation.py results --out report --hours min
+          python3 ci/benchmark-evaluation.py results --out report --hours min \
+            --baseline-label "${{ needs.setup.outputs.baseline_label }}" \
+            --experiment-label "${{ needs.setup.outputs.experiment_label }}"
           {
             echo "## fuzzamoto-libafl benchmark"
-            echo
-            echo "Baseline: \`${{ needs.setup.outputs.baseline }}\`  •  Experiment: \`${{ needs.setup.outputs.experiment }}\`"
             echo
             cat report/evaluation_report.md
           } >> "$GITHUB_STEP_SUMMARY"
