@@ -16,7 +16,7 @@ of Bitcoin full node implementations.
 *It is not meant to be a replacement for traditional fuzzing of isolated
 components, but rather a complement to it.*
 
-Check out the [book](https://dergoegge.github.io/fuzzamoto/index.html) for more information.
+Check out the [book](https://oss-garage.github.io/fuzzamoto/index.html) for more information.
 
 ## Trophies
 
