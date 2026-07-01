@@ -1,7 +1,7 @@
 # Extending Fuzzamoto IR
 
 This guide explains how to add a new IR primitive end to end. Refer to the [IR
-docs](https://dergoegge.github.io/fuzzamoto/design/ir.html) for a high level
+docs](https://oss-garage.github.io/fuzzamoto/design/ir.html) for a high level
 design overview.
 
 ## Model the primitive
@@ -47,10 +47,10 @@ design overview.
 A few PRs that show how IR primitives were added end-to-end:
 
 - [PR #28 - fuzzamoto-ir: Add support for compact block inventory
-  items](https://github.com/dergoegge/fuzzamoto/pull/28)
+  items](https://github.com/oss-garage/fuzzamoto/pull/28)
 - [PR #46 - fuzzamoto-ir/libafl: Expand IR with addr relay (v1&v2)
-  primitives](https://github.com/dergoegge/fuzzamoto/pull/46)
+  primitives](https://github.com/oss-garage/fuzzamoto/pull/46)
 - [PR #45 - Add filterload, filteradd, filterclear handling to
-  fuzzamoto-ir](https://github.com/dergoegge/fuzzamoto/pull/45)
+  fuzzamoto-ir](https://github.com/oss-garage/fuzzamoto/pull/45)
 - [PR #38 - fuzzamoto-ir: add
-  CoinbaseTxGenerator](https://github.com/dergoegge/fuzzamoto/pull/38)
+  CoinbaseTxGenerator](https://github.com/oss-garage/fuzzamoto/pull/38)
